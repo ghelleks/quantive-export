@@ -42,15 +42,15 @@ Before setting up the script, ensure you have:
 - ✅ Basic familiarity with Google Apps Script interface
 
 ### Technical Requirements
-- ✅ **Target Quantive Session ID to analyze**
-  - **What it is**: A unique UUID that identifies a specific OKR session (quarter, cycle, planning period) in Quantive
-  - **Format**: UUID like `12345678-abcd-1234-efgh-123456789012`
+- ✅ **Target Quantive Session Name or ID to analyze**
+  - **What it is**: Either a session name (like "Q4 2024 OKRs") or UUID that identifies a specific OKR session in Quantive
+  - **Easy option**: Use the session name displayed in Quantive (e.g., `Q4 2024 OKRs`, `2024 Company Goals`)
+  - **Alternative format**: UUID like `12345678-abcd-1234-efgh-123456789012`
   - **How to find it**: 
-    1. Log into your Quantive account
-    2. Navigate to the OKR session you want to analyze
-    3. Look at the URL - the session ID is the UUID after `/sessions/`
-    4. Example: `https://app.quantive.com/sessions/12345678-abcd-1234-efgh-123456789012`
-    5. Alternatively, go to the session's settings/details page to copy the ID
+    1. **Session Name (Recommended)**: Log into Quantive and copy the session title from the session page
+    2. **Session UUID (Alternative)**: Look at the URL - the session ID is the UUID after `/sessions/`
+    3. Example URL: `https://app.quantive.com/sessions/12345678-abcd-1234-efgh-123456789012`
+    4. **Auto-resolution**: The system automatically resolves session names to IDs using the Quantive API
 - ✅ Google Doc ID (for formatted reports) OR Google Sheet ID (for data tracking)
 - ✅ Internet connectivity for API calls
 
@@ -110,10 +110,11 @@ The script now includes enhanced configuration management with environment suppo
    Value: [Your actual account ID]
    
    Property Name: SESSION_ID
-   Value: [Your target session UUID - the specific OKR session to analyze]
-   Example: 12345678-abcd-1234-efgh-123456789012
+   Value: [Your session name OR session UUID - the specific OKR session to analyze]
+   Examples: 'Q4 2024 OKRs' OR '12345678-abcd-1234-efgh-123456789012'
    
-   ⚠️ IMPORTANT: This must be the UUID from your Quantive session URL or settings page.
+   ⚠️ NEW: You can now use session names! Much easier than finding UUIDs.
+   The script automatically resolves session names to IDs using the Quantive API.
    The script will analyze ONLY the objectives and key results from this session.
    
    Property Name: ENVIRONMENT

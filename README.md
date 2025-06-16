@@ -38,10 +38,11 @@ Transform your Quantive (formerly Gtmhub) data into beautiful, automated reports
 ### 1. **Get Your Credentials**
 - 🔑 **Quantive API Token**: Go to Quantive Settings → Integrations → Generate API Token
 - 🏢 **Account ID**: Found in your Quantive URL or account settings
-- 📋 **Session ID**: The unique identifier of the OKR session you want to analyze
-  - **What it is**: A UUID that identifies a specific OKR session (quarter, cycle, or planning period) in Quantive
-  - **Where to find it**: In your Quantive session URL (e.g., `quantive.com/sessions/12345678-abcd-1234-efgh-123456789012`) or session settings page
-  - **Format**: UUID like `12345678-abcd-1234-efgh-123456789012`
+- 📋 **Session Name or ID**: The identifier of the OKR session you want to analyze
+  - **What it is**: Either a session name (like "Q4 2024 OKRs") or a UUID that identifies a specific OKR session in Quantive
+  - **Easy option**: Use the session name displayed in Quantive (e.g., `Q4 2024 OKRs`, `2024 Company Goals`)
+  - **Alternative**: Use session UUID from URL (e.g., `quantive.com/sessions/12345678-abcd-1234-efgh-123456789012`)
+  - **Auto-resolution**: The system automatically converts session names to IDs using the Quantive API
   - **Purpose**: Tells the script which session's objectives and key results to include in your reports
 
 ### 2. **Set Up Google Apps Script**
@@ -63,7 +64,7 @@ function quickStart() {
   const config = {
     'QUANTIVE_API_TOKEN': 'your-actual-api-token',     // REPLACE with real token
     'QUANTIVE_ACCOUNT_ID': 'your-actual-account-id',   // REPLACE with real account ID 
-    'SESSION_ID': 'your-actual-session-uuid',          // REPLACE with real session ID
+    'SESSION_ID': 'Q4 2024 OKRs',                      // REPLACE with session name or UUID
     'ENVIRONMENT': 'production',                       // NEW: Environment setting
     'GOOGLE_DOC_ID': 'your-google-doc-id'              // Optional: for formatted reports
   };
@@ -256,11 +257,17 @@ We've made this as easy as possible to set up and maintain:
 | ⚠️ **"Where do I find my session ID?"** | See detailed guide below | ✅ NEW: Enhanced documentation |
 | ⏱️ **"Execution timeout"** | Check environment-specific rate limiting settings | ✅ NEW: Environment tuning |
 
-### 🔍 **Finding Your Session ID: Step-by-Step Guide**
+### 🔍 **Finding Your Session: Step-by-Step Guide**
 
-**Session ID is the most commonly asked question!** Here's exactly how to find it:
+**🎉 NEW: You can now use session names instead of IDs!** Here are your options:
 
-#### Method 1: From the URL (Easiest)
+#### Method 1: Use Session Name (Easiest!)
+1. **Log into Quantive** and navigate to your target OKR session
+2. **Look at the session title** displayed at the top of the page
+3. **Copy the session name** (e.g., "Q4 2024 OKRs", "2024 Company Goals")
+4. **That's it!** Use this name in your SESSION_ID configuration
+
+#### Method 2: From the URL (Alternative)
 1. **Log into Quantive** and navigate to your target OKR session
 2. **Look at the browser URL** - it will look like:
    ```
@@ -269,7 +276,7 @@ We've made this as easy as possible to set up and maintain:
 3. **Copy the UUID** (the long string after `/sessions/`)
 4. **That's your session ID!** Format: `12345678-abcd-1234-efgh-123456789012`
 
-#### Method 2: From Session Settings
+#### Method 3: From Session Settings
 1. **Go to your session** in Quantive
 2. **Click on session settings** or session details
 3. **Look for "Session ID" or "ID"** field
@@ -282,9 +289,11 @@ We've made this as easy as possible to set up and maintain:
 4. **Copy the UUID**
 
 **⚠️ Important Notes:**
-- Session ID must be a **valid UUID format**: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
-- Each session has a **unique ID** - make sure you're targeting the right one
+- **Session names are case-insensitive** and must match exactly (e.g., "Q4 2024 OKRs")
+- **Session UUIDs** still work if you prefer: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+- Each session has a **unique name and ID** - make sure you're targeting the right one
 - The session must be **accessible to your API token** (same account/permissions)
+- **Auto-resolution**: The system automatically finds session IDs from names using the Quantive API
 - If unsure, test with `testConfiguration()` after setup
 
 ### 🎯 **Best Practices (Enhanced in v2.0)**

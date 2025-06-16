@@ -418,7 +418,7 @@ class ConfigManager {
     return {
       apiToken: this.getProperty(CONFIG.PROPERTIES.QUANTIVE_API_TOKEN),
       accountId: this.getProperty(CONFIG.PROPERTIES.QUANTIVE_ACCOUNT_ID),
-      sessionId: this.getProperty(CONFIG.PROPERTIES.SESSION_ID),
+      sessionId: this.resolveSessionId(this.getProperty(CONFIG.PROPERTIES.SESSION_ID)),
       googleDocId: this.getProperty(CONFIG.PROPERTIES.GOOGLE_DOC_ID),
       googleSheetId: this.getProperty(CONFIG.PROPERTIES.GOOGLE_SHEET_ID),
       lookbackDays: parseInt(this.getProperty(CONFIG.PROPERTIES.LOOKBACK_DAYS, CONFIG.DEFAULT_LOOKBACK_DAYS.toString())),
@@ -543,6 +543,94 @@ class ConfigManager {
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidPattern.test(sessionId)) {
       Logger.log('Warning: Session ID does not appear to be a valid UUID format');
+    }
+  }
+
+  /**
+   * Resolve session identifier to session ID
+   * Accepts either a session name or a session ID (UUID)
+   * @param {string} sessionIdentifier - Session name or session ID
+   * @returns {string} Resolved session UUID
+   * @throws {Error} If session cannot be found or resolved
+   */
+  static resolveSessionId(sessionIdentifier) {
+    if (!sessionIdentifier || typeof sessionIdentifier !== 'string') {
+      throw new Error('Session identifier must be a non-empty string');
+    }
+
+    // Check if it's already a UUID format
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (uuidPattern.test(sessionIdentifier)) {
+      Logger.log('Session identifier is already a UUID, using as-is');
+      return sessionIdentifier;
+    }
+
+    // Check for placeholder values
+    if (sessionIdentifier === 'your-session-name-here' || 
+        sessionIdentifier === 'your-session-id-here' || 
+        sessionIdentifier === 'your-session-uuid-here') {
+      throw new Error('Please replace the placeholder session identifier with your actual session name or ID');
+    }
+
+    Logger.log(`Resolving session name "${sessionIdentifier}" to session ID...`);
+
+    try {
+      // Get API configuration for session lookup
+      const config = {
+        apiToken: this.getProperty(CONFIG.PROPERTIES.QUANTIVE_API_TOKEN),
+        accountId: this.getProperty(CONFIG.PROPERTIES.QUANTIVE_ACCOUNT_ID)
+      };
+
+      if (!config.apiToken || !config.accountId) {
+        throw new Error('API token and account ID must be configured before resolving session names');
+      }
+
+      // Create API client instance for session lookup
+      const apiClient = new QuantiveApiClient(config.apiToken, config.accountId);
+      
+      // Fetch all sessions to find matching name
+      const sessions = apiClient.getSessions();
+      
+      if (!sessions || !Array.isArray(sessions)) {
+        throw new Error('Failed to retrieve sessions list from Quantive API');
+      }
+
+      Logger.log(`Found ${sessions.length} sessions, searching for "${sessionIdentifier}"`);
+
+      // Search for session by name (case-insensitive)
+      const matchingSession = sessions.find(session => {
+        return session.name && session.name.toLowerCase() === sessionIdentifier.toLowerCase();
+      });
+
+      if (!matchingSession) {
+        // Provide helpful error with available session names
+        const availableNames = sessions
+          .filter(session => session.name)
+          .map(session => session.name)
+          .slice(0, 10); // Limit to first 10 for readability
+        
+        const namesList = availableNames.length > 0 
+          ? `Available session names: ${availableNames.join(', ')}${sessions.length > 10 ? '...' : ''}`
+          : 'No sessions with names found';
+        
+        throw new Error(`Session with name "${sessionIdentifier}" not found. ${namesList}`);
+      }
+
+      if (!matchingSession.id) {
+        throw new Error(`Found session "${sessionIdentifier}" but it has no ID field`);
+      }
+
+      Logger.log(`Successfully resolved session "${sessionIdentifier}" to ID: ${matchingSession.id}`);
+      return matchingSession.id;
+
+    } catch (error) {
+      if (error.message.includes('Session with name')) {
+        // Re-throw session not found errors as-is
+        throw error;
+      } else {
+        // Wrap other errors with context
+        throw new Error(`Failed to resolve session name "${sessionIdentifier}": ${error.message}`);
+      }
     }
   }
 }
@@ -762,6 +850,14 @@ class QuantiveApiClient {
    */
   getObjectives(sessionId) {
     return this.makeRequest(`/sessions/${sessionId}/objectives`, 'GET');
+  }
+  
+  /**
+   * Get all sessions
+   * @returns {Array} Array of session objects
+   */
+  getSessions() {
+    return this.makeRequest('/sessions', 'GET');
   }
   
   /**
