@@ -23,6 +23,8 @@ The Quantive Session Snapshot & Summary Google Apps Script automatically generat
 - **Multiple Output Formats**: Google Docs for formatted reports, Google Sheets for historical data
 - **Scheduled Execution**: Automatic daily, weekly, or monthly report generation
 - **Error Handling**: Robust retry mechanisms and fallback strategies
+- **Secure Configuration Management**: Environment support with encrypted credential storage
+- **Configuration Templates**: Easy setup with comprehensive examples and validation
 
 ## Prerequisites
 
@@ -76,38 +78,70 @@ Before setting up the script, ensure you have:
 
 ## Configuration
 
-### Step 3: Configure Quantive API Credentials
+### Step 3: Secure Configuration Setup
 
-#### Option A: Using the Setup Function (Recommended)
+The script now includes enhanced configuration management with environment support and security validation. Choose your preferred setup method:
 
-1. **Run Setup Function**
-   - In the Apps Script editor, select `setupConfiguration` from the function dropdown
-   - Click "Run"
-   - Follow the prompts to enter your credentials
+#### Option A: Using Configuration Template (Recommended)
 
-2. **Provide Required Information**
-   - **Quantive API Token**: Your API authentication token
-   - **Quantive Account ID**: Your account identifier
-   - **Session ID**: The target session UUID to analyze
+1. **Review Configuration Template**
+   - Open `config.example.js` to see the complete configuration structure
+   - Review security best practices and setup instructions
+   - Note the environment-specific settings available
 
-#### Option B: Manual Configuration
-
-1. **Open Script Properties**
+2. **Configure Script Properties**
    - In Apps Script editor, go to "Project Settings" (gear icon)
    - Scroll to "Script Properties" section
-   - Click "Add script property"
+   - Add the following **required** properties:
 
-2. **Add Required Properties**
    ```
    Property Name: QUANTIVE_API_TOKEN
-   Value: your-api-token-here
+   Value: [Your actual Quantive API token]
    
    Property Name: QUANTIVE_ACCOUNT_ID  
-   Value: your-account-id-here
+   Value: [Your actual account ID]
    
    Property Name: SESSION_ID
-   Value: target-session-id-here
+   Value: [Your target session UUID]
+   
+   Property Name: ENVIRONMENT
+   Value: development|staging|production
    ```
+
+3. **Optional Environment-Specific Settings**
+   ```
+   Property Name: DEVELOPMENT_API_RATE_LIMIT_DELAY
+   Value: 500
+   
+   Property Name: PRODUCTION_API_RATE_LIMIT_DELAY  
+   Value: 1500
+   
+   Property Name: DEVELOPMENT_LOG_LEVEL
+   Value: DEBUG
+   ```
+
+#### Option B: Using Import Function
+
+1. **Prepare Configuration Object**
+   ```javascript
+   const myConfig = {
+     'QUANTIVE_API_TOKEN': 'your-actual-token',
+     'QUANTIVE_ACCOUNT_ID': 'your-actual-account-id',
+     'SESSION_ID': 'your-session-uuid',
+     'ENVIRONMENT': 'production'
+   };
+   ```
+
+2. **Import Configuration**
+   - Run: `importConfiguration(myConfig)` in the Apps Script console
+   - The function validates required properties and imports them securely
+
+#### Option C: Legacy Setup Function
+
+1. **Run Setup Function**
+   - Select `setupConfiguration` from the function dropdown
+   - Click "Run" to see example configuration structure
+   - Follow the displayed instructions for manual property setup
 
 ### Step 4: Configure Output Destination
 
@@ -141,6 +175,28 @@ Value: 7
 Description: Number of days to look back for "recent activity" (default: 7)
 ```
 
+### Enhanced Configuration Features
+
+#### Environment Management
+The script now supports multiple environments with different settings:
+
+- **Development**: Faster API calls, verbose logging
+- **Staging**: Balanced settings, moderate logging  
+- **Production**: Conservative rate limiting, minimal logging
+
+#### Configuration Validation
+The script automatically validates:
+- ✅ API token format and length
+- ✅ Account ID presence and format
+- ✅ Session ID UUID format validation
+- ✅ Prevention of placeholder value usage
+
+#### Security Features
+- ✅ All credentials stored in Google Apps Script's encrypted PropertiesService
+- ✅ No sensitive data in source code or logs
+- ✅ Configuration export function excludes sensitive data by default
+- ✅ Comprehensive security best practices documentation
+
 ## Usage
 
 ### Manual Report Generation
@@ -148,12 +204,46 @@ Description: Number of days to look back for "recent activity" (default: 7)
 1. **Test Configuration**
    - Select `testConfiguration` from the function dropdown
    - Click "Run" to verify your setup
-   - Check execution logs for any errors
+   - The enhanced validation will check:
+     - ✅ All required properties are present
+     - ✅ API token format is valid
+     - ✅ Account ID is not a placeholder
+     - ✅ Session ID follows UUID format
+   - Check execution logs for any validation errors
 
-2. **Generate Report**
+2. **Test API Connection** (Optional)
+   - Select `testApiConnection` from the function dropdown
+   - Click "Run" to verify Quantive API connectivity
+   - This tests actual API authentication before generating reports
+
+3. **Generate Report**
    - Select `generateQuantiveReport` from the function dropdown  
    - Click "Run" to create a report
    - Check your configured Google Doc or Sheet for the output
+
+### Configuration Management Functions
+
+#### Export Configuration
+```javascript
+// Export configuration (excludes sensitive data)
+const config = exportConfiguration();
+console.log(config);
+
+// Export with sensitive data (use with caution)
+const configWithSecrets = exportConfiguration(true);
+```
+
+#### Import Configuration
+```javascript
+// Import a complete configuration
+const newConfig = {
+  'QUANTIVE_API_TOKEN': 'your-token',
+  'QUANTIVE_ACCOUNT_ID': 'your-account-id',
+  'SESSION_ID': 'your-session-id',
+  'ENVIRONMENT': 'production'
+};
+importConfiguration(newConfig);
+```
 
 ### Understanding Report Output
 
@@ -211,6 +301,8 @@ Description: Number of days to look back for "recent activity" (default: 7)
 2. ✅ Confirm your Account ID matches your Quantive account
 3. ✅ Check that your API token has read permissions for the target session
 4. ✅ Ensure the session ID exists and is accessible
+5. ✅ Run `testConfiguration()` to validate credential format
+6. ✅ Verify you haven't used placeholder values like 'your-api-token-here'
 
 #### Session Not Found Errors
 
@@ -268,9 +360,12 @@ Description: Number of days to look back for "recent activity" (default: 7)
 
 ### Security
 - ✅ **Never hard-code credentials** in the script file
-- ✅ **Use Script Properties** for all sensitive configuration
+- ✅ **Use Script Properties** for all sensitive configuration  
+- ✅ **Use configuration templates** with placeholder values only
 - ✅ **Regularly rotate API tokens** as per your security policy
 - ✅ **Limit script sharing** to authorized team members only
+- ✅ **Use environment-specific configurations** for development vs production
+- ✅ **Export configurations without sensitive data** when sharing examples
 
 ### Performance  
 - ✅ **Set appropriate lookback periods** (7-14 days recommended)
@@ -349,9 +444,12 @@ For first-time setup, follow this checklist:
 
 - [ ] Create Google Apps Script project
 - [ ] Copy Code.gs content to your project
-- [ ] Set up script properties with Quantive credentials
+- [ ] Review `config.example.js` for configuration guidance
+- [ ] Set up script properties with Quantive credentials (use actual values, not placeholders)
+- [ ] Configure environment setting (development/staging/production)
 - [ ] Configure output destination (Google Doc or Sheet)
-- [ ] Run `testConfiguration()` to verify setup
+- [ ] Run `testConfiguration()` to verify setup and validate credentials
+- [ ] Run `testApiConnection()` to verify API connectivity
 - [ ] Generate first manual report with `generateQuantiveReport()`
 - [ ] Set up automated trigger for regular reports
 - [ ] Verify first automated execution

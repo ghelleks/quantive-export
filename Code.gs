@@ -413,14 +413,47 @@ class ConfigManager {
    * @returns {Object} Configuration object
    */
   static getConfig() {
+    const environment = this.getProperty('ENVIRONMENT', 'production');
+    
     return {
       apiToken: this.getProperty(CONFIG.PROPERTIES.QUANTIVE_API_TOKEN),
       accountId: this.getProperty(CONFIG.PROPERTIES.QUANTIVE_ACCOUNT_ID),
       sessionId: this.getProperty(CONFIG.PROPERTIES.SESSION_ID),
       googleDocId: this.getProperty(CONFIG.PROPERTIES.GOOGLE_DOC_ID),
       googleSheetId: this.getProperty(CONFIG.PROPERTIES.GOOGLE_SHEET_ID),
-      lookbackDays: parseInt(this.getProperty(CONFIG.PROPERTIES.LOOKBACK_DAYS, CONFIG.DEFAULT_LOOKBACK_DAYS.toString()))
+      lookbackDays: parseInt(this.getProperty(CONFIG.PROPERTIES.LOOKBACK_DAYS, CONFIG.DEFAULT_LOOKBACK_DAYS.toString())),
+      environment: environment,
+      
+      // Environment-specific settings
+      apiRateLimitDelay: this.getEnvironmentSetting(environment, 'API_RATE_LIMIT_DELAY', 1000),
+      maxRetries: this.getEnvironmentSetting(environment, 'MAX_RETRIES', 3),
+      retryDelay: this.getEnvironmentSetting(environment, 'RETRY_DELAY', 2000),
+      logLevel: this.getEnvironmentSetting(environment, 'LOG_LEVEL', 'INFO')
     };
+  }
+  
+  /**
+   * Get environment-specific setting with fallback to default
+   * @param {string} environment - Current environment
+   * @param {string} setting - Setting name
+   * @param {*} defaultValue - Default value
+   * @returns {*} Setting value
+   */
+  static getEnvironmentSetting(environment, setting, defaultValue) {
+    // Try environment-specific setting first
+    const envSetting = this.getProperty(`${environment.toUpperCase()}_${setting}`);
+    if (envSetting) {
+      return isNaN(envSetting) ? envSetting : parseInt(envSetting);
+    }
+    
+    // Fall back to global setting
+    const globalSetting = this.getProperty(setting);
+    if (globalSetting) {
+      return isNaN(globalSetting) ? globalSetting : parseInt(globalSetting);
+    }
+    
+    // Use default
+    return defaultValue;
   }
   
   /**
@@ -437,11 +470,80 @@ class ConfigManager {
       }
     }
     
+    // Validate API token format
+    this.validateApiToken(config.apiToken);
+    
+    // Validate account ID format
+    this.validateAccountId(config.accountId);
+    
+    // Validate session ID format
+    this.validateSessionId(config.sessionId);
+    
     if (!config.googleDocId && !config.googleSheetId) {
       throw new Error('Either googleDocId or googleSheetId must be configured');
     }
     
     return config;
+  }
+  
+  /**
+   * Validate API token format
+   * @param {string} token - API token to validate
+   * @throws {Error} If token format is invalid
+   */
+  static validateApiToken(token) {
+    if (!token || typeof token !== 'string') {
+      throw new Error('API token must be a non-empty string');
+    }
+    
+    if (token.length < 10) {
+      throw new Error('API token appears to be too short');
+    }
+    
+    if (token === 'your-api-token-here' || token === 'your-quantive-api-token-here') {
+      throw new Error('Please replace the placeholder API token with your actual token');
+    }
+    
+    // Basic format validation - most API tokens contain alphanumeric characters and some symbols
+    if (!/^[A-Za-z0-9\-_\.]+$/.test(token)) {
+      Logger.log('Warning: API token contains unexpected characters, please verify it is correct');
+    }
+  }
+  
+  /**
+   * Validate account ID format
+   * @param {string} accountId - Account ID to validate
+   * @throws {Error} If account ID format is invalid
+   */
+  static validateAccountId(accountId) {
+    if (!accountId || typeof accountId !== 'string') {
+      throw new Error('Account ID must be a non-empty string');
+    }
+    
+    if (accountId === 'your-account-id-here' || accountId === 'your-account-id') {
+      throw new Error('Please replace the placeholder account ID with your actual account ID');
+    }
+  }
+  
+  /**
+   * Validate session ID format (UUID)
+   * @param {string} sessionId - Session ID to validate
+   * @throws {Error} If session ID format is invalid
+   */
+  static validateSessionId(sessionId) {
+    if (!sessionId || typeof sessionId !== 'string') {
+      throw new Error('Session ID must be a non-empty string');
+    }
+    
+    if (sessionId === 'your-session-id-here' || sessionId === 'your-session-uuid-here') {
+      throw new Error('Please replace the placeholder session ID with your actual session ID');
+    }
+    
+    // Validate UUID format (basic check)
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidPattern.test(sessionId)) {
+      Logger.log('Warning: Session ID does not appear to be a valid UUID format');
+    }
   }
 }
 
@@ -1968,12 +2070,70 @@ function setupConfiguration() {
     [CONFIG.PROPERTIES.SESSION_ID]: 'your-session-id-here',
     [CONFIG.PROPERTIES.GOOGLE_DOC_ID]: 'your-google-doc-id-here', // Optional
     [CONFIG.PROPERTIES.GOOGLE_SHEET_ID]: 'your-google-sheet-id-here', // Optional
-    [CONFIG.PROPERTIES.LOOKBACK_DAYS]: '7'
+    [CONFIG.PROPERTIES.LOOKBACK_DAYS]: '7',
+    'ENVIRONMENT': 'development' // Optional: development, staging, production
   };
   
   Logger.log('To configure this script, use ConfigManager.setProperties() with your actual values');
   Logger.log('Example: ConfigManager.setProperties({...})');
   Logger.log('Required properties: ' + JSON.stringify(Object.keys(exampleConfig)));
+  Logger.log('');
+  Logger.log('For secure configuration management, see config.example.js for detailed setup instructions');
+}
+
+/**
+ * Import configuration from a configuration object
+ * @param {Object} configObj - Configuration object with all properties
+ */
+function importConfiguration(configObj) {
+  if (!configObj || typeof configObj !== 'object') {
+    throw new Error('Invalid configuration object provided');
+  }
+  
+  // Validate required properties
+  const required = [
+    CONFIG.PROPERTIES.QUANTIVE_API_TOKEN,
+    CONFIG.PROPERTIES.QUANTIVE_ACCOUNT_ID,
+    CONFIG.PROPERTIES.SESSION_ID
+  ];
+  
+  for (const prop of required) {
+    if (!configObj[prop]) {
+      throw new Error(`Missing required property: ${prop}`);
+    }
+  }
+  
+  // Set properties
+  ConfigManager.setProperties(configObj);
+  Logger.log('Configuration imported successfully');
+  Logger.log(`Properties set: ${Object.keys(configObj).length}`);
+}
+
+/**
+ * Export current configuration (excluding sensitive values)
+ * @param {boolean} includeSensitive - Whether to include API tokens (default: false)
+ * @returns {Object} Configuration object
+ */
+function exportConfiguration(includeSensitive = false) {
+  const config = ConfigManager.getConfig();
+  const exportObj = {
+    [CONFIG.PROPERTIES.SESSION_ID]: config.sessionId,
+    [CONFIG.PROPERTIES.GOOGLE_DOC_ID]: config.googleDocId,
+    [CONFIG.PROPERTIES.GOOGLE_SHEET_ID]: config.googleSheetId,
+    [CONFIG.PROPERTIES.LOOKBACK_DAYS]: config.lookbackDays.toString(),
+    'ENVIRONMENT': config.environment
+  };
+  
+  if (includeSensitive) {
+    exportObj[CONFIG.PROPERTIES.QUANTIVE_API_TOKEN] = config.apiToken;
+    exportObj[CONFIG.PROPERTIES.QUANTIVE_ACCOUNT_ID] = config.accountId;
+    Logger.log('WARNING: Exported configuration includes sensitive API credentials');
+  } else {
+    exportObj[CONFIG.PROPERTIES.QUANTIVE_API_TOKEN] = '[HIDDEN]';
+    exportObj[CONFIG.PROPERTIES.QUANTIVE_ACCOUNT_ID] = '[HIDDEN]';
+  }
+  
+  return exportObj;
 }
 
 /**

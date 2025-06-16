@@ -4,6 +4,12 @@
 
 Transform your Quantive (formerly Gtmhub) data into beautiful, automated reports that keep your team aligned and informed. No more manual data compilation or missed updates—just clear, consistent insights delivered right to your Google Workspace.
 
+## 🆕 **New in v2.0: Enhanced Security & Configuration Management**
+- 🔒 **Advanced security features** with credential validation and environment support
+- ⚙️ **Streamlined configuration** with templates and import/export utilities  
+- 🏗️ **Environment management** for development, staging, and production deployments
+- 🛡️ **Enhanced validation** prevents common setup errors and security issues
+
 ---
 
 ## ✨ What This Does
@@ -40,22 +46,47 @@ Transform your Quantive (formerly Gtmhub) data into beautiful, automated reports
 - 📋 Copy and paste the contents of [`Code.gs`](Code.gs) into your project
 - 💾 Save your project with a descriptive name
 
-### 3. **Configure Your Settings**
-Run this setup function with your credentials:
+### 3. **Secure Configuration Setup (v2.0)**
+
+**NEW**: Enhanced setup with validation and security features:
+
 ```javascript
 function quickStart() {
-  ConfigManager.setProperties({
-    'QUANTIVE_API_TOKEN': 'your-api-token-here',
-    'QUANTIVE_ACCOUNT_ID': 'your-account-id-here', 
-    'SESSION_ID': 'your-session-id-here',
-    'GOOGLE_DOC_ID': 'your-google-doc-id-here'  // Optional: for formatted reports
-  });
+  // Step 1: Review the configuration template
+  // Open config.example.js for comprehensive setup guidance
   
-  // Test it works
-  const result = testConfiguration();
-  Logger.log(result.success ? '✅ Setup successful!' : '❌ Setup failed: ' + result.message);
+  // Step 2: Set up your configuration with actual values
+  const config = {
+    'QUANTIVE_API_TOKEN': 'your-actual-api-token',     // REPLACE with real token
+    'QUANTIVE_ACCOUNT_ID': 'your-actual-account-id',   // REPLACE with real account ID 
+    'SESSION_ID': 'your-actual-session-uuid',          // REPLACE with real session ID
+    'ENVIRONMENT': 'production',                       // NEW: Environment setting
+    'GOOGLE_DOC_ID': 'your-google-doc-id'              // Optional: for formatted reports
+  };
+  
+  try {
+    // Step 3: Import with enhanced validation
+    importConfiguration(config);
+    Logger.log('✅ Configuration imported successfully');
+    
+    // Step 4: Validate setup
+    if (testConfiguration()) {
+      Logger.log('✅ Configuration validated - ready to generate reports!');
+    } else {
+      Logger.log('❌ Configuration validation failed - check your credentials');
+    }
+    
+    // Step 5: Test API connectivity
+    if (testApiConnection()) {
+      Logger.log('✅ API connection verified - system ready!');
+    }
+  } catch (error) {
+    Logger.log('❌ Setup failed: ' + error.toString());
+  }
 }
 ```
+
+> **⚠️ Security Note**: Always replace placeholder values with your actual credentials. Never commit real API tokens to version control.
 
 ### 4. **Generate Your First Report**
 ```javascript
@@ -98,11 +129,13 @@ Comprehensive Google Sheets with 15 data points per report:
 
 ## 🛠️ Features & Capabilities
 
-### 🔒 **Enterprise-Ready Security**
-- ✅ Secure credential storage using Google's PropertiesService
-- ✅ No hardcoded API keys or sensitive data in code
-- ✅ Input validation and error classification
-- ✅ Comprehensive logging for audit trails
+### 🔒 **Enterprise-Ready Security (Enhanced in v2.0)**
+- ✅ **Secure credential storage** using Google's encrypted PropertiesService
+- ✅ **Zero hardcoded secrets** - all sensitive data stored securely
+- ✅ **NEW: Advanced validation** - API token format, UUID validation, placeholder detection
+- ✅ **NEW: Environment isolation** - separate configs for dev/staging/production
+- ✅ **Enhanced error handling** with security-focused error messages
+- ✅ **Configuration import/export** with sensitive data protection
 
 ### ⚡ **Performance Optimized**
 - ✅ Handles sessions with up to 400+ key results
@@ -116,11 +149,14 @@ Comprehensive Google Sheets with 15 data points per report:
 - ✅ Configurable "recent activity" detection
 - ✅ Automated insights and recommendations
 
-### 🔧 **Flexible Configuration**
-- ✅ Multiple output formats (Google Docs, Sheets, or both)
-- ✅ Configurable lookback periods for recent activity
-- ✅ Multiple scheduling options (daily, weekly, monthly)
-- ✅ Environment-specific configurations (dev, staging, prod)
+### 🔧 **Flexible Configuration (Enhanced in v2.0)**
+- ✅ **Multiple output formats** (Google Docs, Sheets, or both)
+- ✅ **Configurable lookback periods** for recent activity tracking
+- ✅ **Multiple scheduling options** (daily, weekly, monthly automation)
+- ✅ **NEW: Environment management** with dev/staging/production support
+- ✅ **NEW: Configuration templates** for common deployment scenarios
+- ✅ **NEW: Import/export utilities** for easy configuration management
+- ✅ **NEW: Environment-specific settings** (rate limiting, logging, retries)
 
 ### 🛡️ **Robust Error Handling**
 - ✅ Graceful handling of API rate limits
@@ -136,8 +172,9 @@ We've made this as easy as possible to set up and maintain:
 
 | Document | Description | Perfect For |
 |----------|-------------|-------------|
-| **[User Guide](USER_GUIDE.md)** | Complete setup and usage instructions | First-time users and administrators |
-| **[Configuration Templates](CONFIG_TEMPLATES.md)** | Pre-built configs for different scenarios | Quick setup and environment management |
+| **[User Guide](USER_GUIDE.md)** | Complete setup and usage instructions with v2.0 features | First-time users and administrators |
+| **[Configuration Templates](CONFIG_TEMPLATES.md)** | Pre-built configs with security best practices | Quick setup and environment management |
+| **[config.example.js](config.example.js)** | **NEW**: Comprehensive configuration template with security guidance | Secure setup and credential management |
 | **[Deployment Checklist](DEPLOYMENT_CHECKLIST.md)** | Step-by-step production deployment | IT teams and enterprise deployments |
 | **[Testing Scenarios](TESTING_SCENARIOS.md)** | Comprehensive testing documentation | Developers and quality assurance |
 
@@ -201,25 +238,30 @@ We've made this as easy as possible to set up and maintain:
 - 🧪 **Run the built-in tests** - Use `testConfiguration()` to diagnose issues
 - 📋 **Follow the [Deployment Checklist](DEPLOYMENT_CHECKLIST.md)** - Ensures proper setup
 
-### 🐛 **Troubleshooting**
+### 🐛 **Troubleshooting (Enhanced in v2.0)**
 
 **Most common issues and quick fixes:**
 
-| Issue | Quick Fix |
-|-------|-----------|
-| 🔑 **"Authentication failed"** | Verify your API token and account ID in script properties |
-| 📄 **"Session not found"** | Check that your session ID is correct and accessible |
-| 📝 **"Can't write to document"** | Ensure your Google Doc/Sheet ID is correct and editable |
-| ⏱️ **"Execution timeout"** | Large datasets? Check our [performance optimization guide](USER_GUIDE.md#performance) |
+| Issue | Quick Fix | New in v2.0 |
+|-------|-----------|-------------|
+| 🔑 **"Authentication failed"** | Run `testConfiguration()` to validate credentials | ✅ Enhanced validation |
+| 📄 **"Session not found"** | Check UUID format and session accessibility | ✅ UUID validation |
+| 📝 **"Can't write to document"** | Verify Google Doc/Sheet ID and permissions | |
+| ⚠️ **"Placeholder values detected"** | Replace 'your-api-token-here' with real credentials | ✅ NEW: Placeholder detection |
+| 🔧 **"Configuration validation failed"** | Use `importConfiguration()` for automatic validation | ✅ NEW: Import validation |
+| ⏱️ **"Execution timeout"** | Check environment-specific rate limiting settings | ✅ NEW: Environment tuning |
 
-### 🎯 **Best Practices**
+### 🎯 **Best Practices (Enhanced in v2.0)**
 
 **Set yourself up for success:**
 
 - ✅ **Start small** - Test with one session before scaling up
 - ✅ **Use meaningful names** - Name your Google Apps Script project clearly
 - ✅ **Monitor initially** - Check the first few automated runs to ensure reliability
-- ✅ **Keep credentials secure** - Never share or hardcode API tokens
+- ✅ **NEW: Use configuration templates** - Start with `config.example.js` for secure setup
+- ✅ **NEW: Environment isolation** - Use different environments for development vs production
+- ✅ **Enhanced security** - Never share configurations with real credentials
+- ✅ **NEW: Validate everything** - Use `testConfiguration()` and `testApiConnection()` functions
 - ✅ **Regular maintenance** - Review and update session IDs quarterly
 
 ---
@@ -263,16 +305,25 @@ Whether you have 5 objectives or 500, this system scales with your organization.
 ## 🤖 Built with Care
 
 This project was crafted with attention to:
-- **🛡️ Security**: No shortcuts on credential protection
-- **📖 Documentation**: Clear, helpful guides for every skill level  
-- **🧪 Testing**: Comprehensive test suites for reliability
+- **🛡️ Security**: Enterprise-grade credential protection with v2.0 enhancements
+- **📖 Documentation**: Clear, helpful guides for every skill level and use case  
+- **🧪 Testing**: Comprehensive test suites and validation functions
 - **⚡ Performance**: Optimized for Google Apps Script environment
-- **🎯 Usability**: Simple setup, powerful results
+- **🎯 Usability**: Simple setup, powerful results, secure by default
+- **🔧 Maintainability**: Environment support and configuration management
+
+### 📋 **Quick Checklist for v2.0 Setup**
+- [ ] Review `config.example.js` for comprehensive setup guidance
+- [ ] Use `importConfiguration()` function for validated setup
+- [ ] Set `ENVIRONMENT` property for your deployment (dev/staging/prod)
+- [ ] Run `testConfiguration()` and `testApiConnection()` to validate
+- [ ] Never commit real credentials to version control
+- [ ] Use environment-specific settings for optimal performance
 
 ---
 
-**Ready to transform your OKR reporting?** [Get started now](#-quick-start) and see the difference automation makes! 🚀
+**Ready to transform your OKR reporting with enhanced security?** [Get started now](#-quick-start) and experience the difference v2.0 makes! 🚀
 
 ---
 
-*Made with ❤️ for teams who value aligned execution and data-driven decisions.*
+*Made with ❤️ for teams who value aligned execution, data-driven decisions, and enterprise-grade security.*

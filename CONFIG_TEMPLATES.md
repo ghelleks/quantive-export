@@ -2,97 +2,199 @@
 
 This document provides sample configuration templates for different deployment scenarios of the Quantive Session Snapshot & Summary Google Apps Script.
 
+## ⚠️ SECURITY NOTICE
+
+**NEVER use actual API tokens or credentials in configuration templates!** All examples below use placeholder values that must be replaced with your actual credentials. Always use Google Apps Script's PropertiesService for secure storage.
+
+**New in v2.0**: Enhanced configuration management with environment support, validation, and security features.
+
 ## Basic Configuration Template
 
 ### Required Properties
 ```javascript
 // Copy these properties to your Google Apps Script Project Settings > Script Properties
+// IMPORTANT: Replace placeholder values with your actual credentials
 
-// Quantive API Credentials
-QUANTIVE_API_TOKEN = "your-quantive-api-token-here"
-QUANTIVE_ACCOUNT_ID = "your-quantive-account-id-here"
+// Quantive API Credentials (REQUIRED)
+QUANTIVE_API_TOKEN = "your-quantive-api-token-here"     // Replace with actual API token
+QUANTIVE_ACCOUNT_ID = "your-quantive-account-id-here"   // Replace with actual account ID
 
-// Target Session
-SESSION_ID = "your-session-id-here"
+// Target Session (REQUIRED)
+SESSION_ID = "your-session-id-here"                     // Replace with actual session UUID
+
+// Environment Configuration (RECOMMENDED)
+ENVIRONMENT = "production"                              // development, staging, or production
 
 // Output Destination (choose one or both)
-GOOGLE_DOC_ID = "your-google-doc-id-here"        // Optional: for formatted reports
-GOOGLE_SHEET_ID = "your-google-sheet-id-here"    // Optional: for historical data
+GOOGLE_DOC_ID = "your-google-doc-id-here"              // Optional: for formatted reports
+GOOGLE_SHEET_ID = "your-google-sheet-id-here"          // Optional: for historical data
 
 // Activity Tracking
-LOOKBACK_DAYS = "7"                               // Optional: defaults to 7 days
+LOOKBACK_DAYS = "7"                                     // Optional: defaults to 7 days
+
+// Environment-Specific Settings (Optional)
+PRODUCTION_API_RATE_LIMIT_DELAY = "1500"               // Slower for production
+DEVELOPMENT_API_RATE_LIMIT_DELAY = "500"               // Faster for development
+PRODUCTION_LOG_LEVEL = "WARN"                           // Less verbose for production
+DEVELOPMENT_LOG_LEVEL = "DEBUG"                         // More verbose for development
 ```
 
-### Setup Function Configuration
+### Enhanced Setup Function (v2.0)
 ```javascript
-// Alternative: Use the built-in setup function
+// NEW: Use the enhanced import function with validation
 function setupMyConfiguration() {
-  ConfigManager.setProperties({
-    'QUANTIVE_API_TOKEN': 'your-api-token-here',
-    'QUANTIVE_ACCOUNT_ID': 'your-account-id-here',
-    'SESSION_ID': 'your-session-id-here',
-    'GOOGLE_DOC_ID': 'your-google-doc-id',      // Optional
-    'GOOGLE_SHEET_ID': 'your-google-sheet-id',  // Optional
-    'LOOKBACK_DAYS': '7'                        // Optional
-  });
+  const config = {
+    'QUANTIVE_API_TOKEN': 'your-actual-api-token',    // REPLACE with real token
+    'QUANTIVE_ACCOUNT_ID': 'your-actual-account-id',  // REPLACE with real account ID
+    'SESSION_ID': 'your-actual-session-uuid',         // REPLACE with real session ID
+    'ENVIRONMENT': 'production',                      // development, staging, production
+    'GOOGLE_DOC_ID': 'your-google-doc-id',           // Optional
+    'GOOGLE_SHEET_ID': 'your-google-sheet-id',       // Optional
+    'LOOKBACK_DAYS': '7'                             // Optional
+  };
   
-  Logger.log('Configuration saved successfully');
+  try {
+    // NEW: Import with validation
+    importConfiguration(config);
+    Logger.log('✅ Configuration imported and validated successfully');
+    
+    // NEW: Test the configuration
+    if (testConfiguration()) {
+      Logger.log('✅ Configuration test passed');
+    } else {
+      Logger.log('❌ Configuration test failed - check your credentials');
+    }
+  } catch (error) {
+    Logger.log('❌ Configuration setup failed: ' + error.toString());
+  }
 }
 ```
 
 ## Environment-Specific Templates
 
-### Development Environment
+### Development Environment (Enhanced)
 ```javascript
-// Development/Testing Configuration
+// Development/Testing Configuration with Environment-Specific Settings
 const DEV_CONFIG = {
-  'QUANTIVE_API_TOKEN': 'dev-api-token-here',
-  'QUANTIVE_ACCOUNT_ID': 'dev-account-id-here',
-  'SESSION_ID': 'test-session-id-here',
+  'QUANTIVE_API_TOKEN': 'dev-api-token-here',              // REPLACE with dev token
+  'QUANTIVE_ACCOUNT_ID': 'dev-account-id-here',            // REPLACE with dev account
+  'SESSION_ID': 'test-session-id-here',                    // REPLACE with test session
+  'ENVIRONMENT': 'development',                            // NEW: Environment setting
   'GOOGLE_DOC_ID': 'test-doc-id-here',
   'GOOGLE_SHEET_ID': 'test-sheet-id-here',
-  'LOOKBACK_DAYS': '3'  // Shorter lookback for testing
+  'LOOKBACK_DAYS': '3',                                    // Shorter lookback for testing
+  
+  // NEW: Development-specific settings
+  'DEVELOPMENT_API_RATE_LIMIT_DELAY': '500',              // Faster API calls
+  'DEVELOPMENT_LOG_LEVEL': 'DEBUG',                       // Verbose logging
+  'DEVELOPMENT_MAX_RETRIES': '2'                          // Fewer retries for faster feedback
 };
 
 function setupDevelopmentConfig() {
-  ConfigManager.setProperties(DEV_CONFIG);
-  Logger.log('Development configuration applied');
+  try {
+    importConfiguration(DEV_CONFIG);  // NEW: Use import with validation
+    Logger.log('✅ Development configuration applied and validated');
+    
+    // NEW: Verify environment settings
+    const config = ConfigManager.getConfig();
+    Logger.log(`Environment: ${config.environment}`);
+    Logger.log(`Rate limit delay: ${config.apiRateLimitDelay}ms`);
+    Logger.log(`Log level: ${config.logLevel}`);
+  } catch (error) {
+    Logger.log('❌ Development setup failed: ' + error.toString());
+  }
 }
 ```
 
-### Production Environment
+### Production Environment (Enhanced)
 ```javascript
-// Production Configuration
+// Production Configuration with Security and Performance Optimizations
 const PROD_CONFIG = {
-  'QUANTIVE_API_TOKEN': 'prod-api-token-here',
-  'QUANTIVE_ACCOUNT_ID': 'prod-account-id-here',
-  'SESSION_ID': 'current-quarter-session-id',
-  'GOOGLE_DOC_ID': 'executive-report-doc-id',
-  'GOOGLE_SHEET_ID': 'historical-data-sheet-id',
-  'LOOKBACK_DAYS': '7'
+  'QUANTIVE_API_TOKEN': 'prod-api-token-here',             // REPLACE with production token
+  'QUANTIVE_ACCOUNT_ID': 'prod-account-id-here',           // REPLACE with production account
+  'SESSION_ID': 'current-quarter-session-id',              // REPLACE with current session
+  'ENVIRONMENT': 'production',                             // NEW: Environment setting
+  'GOOGLE_DOC_ID': 'executive-report-doc-id',              // REPLACE with real doc ID
+  'GOOGLE_SHEET_ID': 'historical-data-sheet-id',          // REPLACE with real sheet ID
+  'LOOKBACK_DAYS': '7',
+  
+  // NEW: Production-specific settings
+  'PRODUCTION_API_RATE_LIMIT_DELAY': '1500',              // Conservative rate limiting
+  'PRODUCTION_LOG_LEVEL': 'WARN',                         // Minimal logging
+  'PRODUCTION_MAX_RETRIES': '3',                          // More retries for reliability
+  'PRODUCTION_RETRY_DELAY': '3000'                        // Longer retry delays
 };
 
 function setupProductionConfig() {
-  ConfigManager.setProperties(PROD_CONFIG);
-  Logger.log('Production configuration applied');
+  try {
+    // NEW: Enhanced security validation for production
+    Logger.log('Setting up production configuration...');
+    
+    importConfiguration(PROD_CONFIG);  // NEW: Import with validation
+    Logger.log('✅ Production configuration imported');
+    
+    // NEW: Comprehensive validation for production
+    if (testConfiguration()) {
+      Logger.log('✅ Production configuration validated');
+    } else {
+      throw new Error('Production configuration validation failed');
+    }
+    
+    // NEW: Test API connectivity
+    if (testApiConnection()) {
+      Logger.log('✅ Production API connection verified');
+    } else {
+      throw new Error('Production API connection test failed');
+    }
+    
+    // NEW: Verify environment settings
+    const config = ConfigManager.getConfig();
+    Logger.log(`Environment: ${config.environment}`);
+    Logger.log(`Rate limit delay: ${config.apiRateLimitDelay}ms`);
+    Logger.log('🎉 Production setup completed successfully');
+    
+  } catch (error) {
+    Logger.log('❌ Production setup failed: ' + error.toString());
+    throw error;  // Re-throw for production safety
+  }
 }
 ```
 
-### Staging Environment
+### Staging Environment (Enhanced)
 ```javascript
-// Staging/UAT Configuration
+// Staging/UAT Configuration with Balanced Settings
 const STAGING_CONFIG = {
-  'QUANTIVE_API_TOKEN': 'staging-api-token-here',
-  'QUANTIVE_ACCOUNT_ID': 'staging-account-id-here',
-  'SESSION_ID': 'uat-session-id-here',
-  'GOOGLE_DOC_ID': 'staging-doc-id-here',
-  'GOOGLE_SHEET_ID': 'staging-sheet-id-here',
-  'LOOKBACK_DAYS': '14'  // Longer lookback for validation
+  'QUANTIVE_API_TOKEN': 'staging-api-token-here',          // REPLACE with staging token
+  'QUANTIVE_ACCOUNT_ID': 'staging-account-id-here',        // REPLACE with staging account
+  'SESSION_ID': 'uat-session-id-here',                     // REPLACE with UAT session
+  'ENVIRONMENT': 'staging',                                // NEW: Environment setting
+  'GOOGLE_DOC_ID': 'staging-doc-id-here',                  // REPLACE with staging doc ID
+  'GOOGLE_SHEET_ID': 'staging-sheet-id-here',              // REPLACE with staging sheet ID
+  'LOOKBACK_DAYS': '14',                                   // Longer lookback for validation
+  
+  // NEW: Staging-specific settings (balanced between dev and prod)
+  'STAGING_API_RATE_LIMIT_DELAY': '1000',                 // Moderate rate limiting
+  'STAGING_LOG_LEVEL': 'INFO',                            // Balanced logging
+  'STAGING_MAX_RETRIES': '3'                              // Production-like retry behavior
 };
 
 function setupStagingConfig() {
-  ConfigManager.setProperties(STAGING_CONFIG);
-  Logger.log('Staging configuration applied');
+  try {
+    importConfiguration(STAGING_CONFIG);  // NEW: Import with validation
+    Logger.log('✅ Staging configuration applied and validated');
+    
+    // NEW: Validate staging environment
+    const config = ConfigManager.getConfig();
+    Logger.log(`Environment: ${config.environment}`);
+    Logger.log(`Rate limit delay: ${config.apiRateLimitDelay}ms`);
+    
+    // NEW: Optional staging-specific tests
+    if (testConfiguration()) {
+      Logger.log('✅ Staging configuration test passed');
+    }
+  } catch (error) {
+    Logger.log('❌ Staging setup failed: ' + error.toString());
+  }
 }
 ```
 
@@ -216,35 +318,132 @@ function setupMonthlyReporting() {
 }
 ```
 
-## Security-Enhanced Templates
+## Security-Enhanced Templates (v2.0)
 
-### Production with Enhanced Security
+### Enterprise Production with Maximum Security
 ```javascript
-// Production configuration with additional security validations
-function setupSecureProductionConfig() {
+// NEW: Enterprise-grade production configuration with comprehensive security
+function setupEnterpriseProductionConfig() {
   const config = {
-    'QUANTIVE_API_TOKEN': 'your-prod-token-here',
-    'QUANTIVE_ACCOUNT_ID': 'your-prod-account-here',
-    'SESSION_ID': 'prod-session-id-here',
-    'GOOGLE_DOC_ID': 'secure-report-doc-id',
-    'GOOGLE_SHEET_ID': 'secure-data-sheet-id',
-    'LOOKBACK_DAYS': '7'
+    'QUANTIVE_API_TOKEN': 'your-prod-token-here',           // REPLACE with production token
+    'QUANTIVE_ACCOUNT_ID': 'your-prod-account-here',        // REPLACE with production account
+    'SESSION_ID': 'prod-session-id-here',                   // REPLACE with production session
+    'ENVIRONMENT': 'production',                            // NEW: Environment setting
+    'GOOGLE_DOC_ID': 'secure-report-doc-id',                // REPLACE with secure doc ID
+    'GOOGLE_SHEET_ID': 'secure-data-sheet-id',              // REPLACE with secure sheet ID
+    'LOOKBACK_DAYS': '7',
+    
+    // NEW: Enhanced security settings
+    'PRODUCTION_API_RATE_LIMIT_DELAY': '2000',             // Extra conservative rate limiting
+    'PRODUCTION_LOG_LEVEL': 'ERROR',                       // Minimal logging for security
+    'PRODUCTION_MAX_RETRIES': '5',                         // More retries for reliability
+    'PRODUCTION_RETRY_DELAY': '5000'                       // Longer delays between retries
   };
   
-  // Validate configuration before saving
+  // NEW: Comprehensive security validation pipeline
   try {
-    ConfigManager.setProperties(config);
+    Logger.log('🔒 Initiating enterprise security setup...');
     
-    // Test configuration immediately
-    const testResult = testConfiguration();
-    if (testResult.success) {
-      Logger.log('Secure production configuration validated and applied');
-    } else {
-      throw new Error('Configuration validation failed: ' + testResult.message);
+    // Step 1: Validate configuration structure
+    if (!config.QUANTIVE_API_TOKEN || config.QUANTIVE_API_TOKEN.includes('your-')) {
+      throw new Error('Security Error: API token contains placeholder values');
     }
+    
+    if (!config.QUANTIVE_ACCOUNT_ID || config.QUANTIVE_ACCOUNT_ID.includes('your-')) {
+      throw new Error('Security Error: Account ID contains placeholder values');
+    }
+    
+    if (!config.SESSION_ID || config.SESSION_ID.includes('your-')) {
+      throw new Error('Security Error: Session ID contains placeholder values');
+    }
+    
+    Logger.log('✅ Pre-validation security checks passed');
+    
+    // Step 2: Import with enhanced validation
+    importConfiguration(config);
+    Logger.log('✅ Configuration imported with validation');
+    
+    // Step 3: Comprehensive configuration testing
+    if (!testConfiguration()) {
+      throw new Error('Configuration validation failed - check credentials');
+    }
+    Logger.log('✅ Configuration validation passed');
+    
+    // Step 4: API connectivity verification
+    if (!testApiConnection()) {
+      throw new Error('API connection test failed - check network and credentials');
+    }
+    Logger.log('✅ API connectivity verified');
+    
+    // Step 5: Test report generation (dry run)
+    Logger.log('🧪 Running test report generation...');
+    const testResult = generateQuantiveReport();
+    if (testResult && (testResult.docUrl || testResult.sheetUrl)) {
+      Logger.log('✅ Test report generation successful');
+    } else {
+      Logger.log('⚠️ Test report generation completed with warnings');
+    }
+    
+    // Step 6: Verify environment settings
+    const finalConfig = ConfigManager.getConfig();
+    Logger.log(`Environment: ${finalConfig.environment}`);
+    Logger.log(`Security Level: Enterprise`);
+    Logger.log(`Rate Limit: ${finalConfig.apiRateLimitDelay}ms`);
+    Logger.log(`Log Level: ${finalConfig.logLevel}`);
+    
+    Logger.log('🔒🎉 Enterprise production configuration setup completed successfully!');
+    Logger.log('📊 System ready for automated report generation');
+    
   } catch (error) {
-    Logger.log('Configuration setup failed: ' + error.toString());
-    throw error;
+    Logger.log('🚨 Enterprise setup failed: ' + error.toString());
+    Logger.log('🔧 Please review configuration and try again');
+    throw error;  // Re-throw for enterprise safety
+  }
+}
+```
+
+### Secure Development Environment
+```javascript
+// NEW: Development environment with security best practices
+function setupSecureDevelopmentConfig() {
+  const config = {
+    'QUANTIVE_API_TOKEN': 'dev-token-here',                 // REPLACE with dev token
+    'QUANTIVE_ACCOUNT_ID': 'dev-account-here',              // REPLACE with dev account
+    'SESSION_ID': 'dev-session-here',                       // REPLACE with dev session
+    'ENVIRONMENT': 'development',                           // Development environment
+    'GOOGLE_DOC_ID': 'dev-test-doc-id',                     // REPLACE with test doc ID
+    'GOOGLE_SHEET_ID': 'dev-test-sheet-id',                 // REPLACE with test sheet ID
+    'LOOKBACK_DAYS': '3',
+    
+    // Development-specific security settings
+    'DEVELOPMENT_API_RATE_LIMIT_DELAY': '1000',            // Moderate rate limiting
+    'DEVELOPMENT_LOG_LEVEL': 'DEBUG',                      // Full logging for debugging
+    'DEVELOPMENT_MAX_RETRIES': '2'                         // Fewer retries for faster feedback
+  };
+  
+  try {
+    Logger.log('🔒 Setting up secure development environment...');
+    
+    // Basic security validation
+    if (config.QUANTIVE_API_TOKEN.includes('your-') || 
+        config.QUANTIVE_ACCOUNT_ID.includes('your-') ||
+        config.SESSION_ID.includes('your-')) {
+      throw new Error('Security Error: Replace all placeholder values before setup');
+    }
+    
+    importConfiguration(config);
+    Logger.log('✅ Secure development configuration applied');
+    
+    // Validate setup
+    if (testConfiguration()) {
+      Logger.log('✅ Development configuration validated');
+      Logger.log('🚀 Ready for development and testing');
+    } else {
+      Logger.log('❌ Configuration validation failed');
+    }
+    
+  } catch (error) {
+    Logger.log('❌ Secure development setup failed: ' + error.toString());
   }
 }
 ```
@@ -322,21 +521,35 @@ function quickStartSetup() {
 }
 ```
 
-## Configuration Reference
+## Configuration Reference (v2.0)
 
 ### Required Values
-| Property | Description | Example |
-|----------|-------------|---------|
-| `QUANTIVE_API_TOKEN` | Your Quantive API authentication token | `qtv_1234567890abcdef...` |
-| `QUANTIVE_ACCOUNT_ID` | Your Quantive account identifier | `12345678-1234-1234-1234-123456789012` |
-| `SESSION_ID` | Target session UUID to analyze | `87654321-4321-4321-4321-210987654321` |
+| Property | Description | Validation | Example |
+|----------|-------------|------------|---------|
+| `QUANTIVE_API_TOKEN` | Your Quantive API authentication token | Length > 10, no placeholders | `qtv_1234567890abcdef...` |
+| `QUANTIVE_ACCOUNT_ID` | Your Quantive account identifier | Non-empty, no placeholders | `12345678-1234-1234-1234-123456789012` |
+| `SESSION_ID` | Target session UUID to analyze | Valid UUID format | `87654321-4321-4321-4321-210987654321` |
 
-### Optional Values
+### Core Optional Values  
 | Property | Description | Default | Example |
 |----------|-------------|---------|---------|
+| `ENVIRONMENT` | **NEW**: Environment setting | `production` | `development`, `staging`, `production` |
 | `GOOGLE_DOC_ID` | Google Doc ID for formatted reports | None | `1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms` |
 | `GOOGLE_SHEET_ID` | Google Sheet ID for data tracking | None | `1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms` |
 | `LOOKBACK_DAYS` | Days to look back for recent activity | `7` | `14` |
+
+### Environment-Specific Settings (NEW in v2.0)
+| Property Pattern | Description | Environment | Default |
+|------------------|-------------|-------------|---------|
+| `{ENV}_API_RATE_LIMIT_DELAY` | API call delay in milliseconds | Any | `1000` |
+| `{ENV}_LOG_LEVEL` | Logging verbosity level | Any | `INFO` |
+| `{ENV}_MAX_RETRIES` | Maximum retry attempts | Any | `3` |
+| `{ENV}_RETRY_DELAY` | Delay between retries (ms) | Any | `2000` |
+
+**Examples:**
+- `DEVELOPMENT_API_RATE_LIMIT_DELAY=500`
+- `PRODUCTION_LOG_LEVEL=WARN`
+- `STAGING_MAX_RETRIES=3`
 
 ### How to Find Your IDs
 
@@ -358,6 +571,44 @@ function quickStartSetup() {
 1. Open the session in Quantive
 2. Copy the ID from the URL or session settings
 
+## Security Best Practices (NEW in v2.0)
+
+### ✅ DO
+- **Use Google Apps Script Properties** for all sensitive configuration
+- **Replace ALL placeholder values** with actual credentials before setup
+- **Use environment-specific configurations** for development vs production
+- **Run validation functions** (`testConfiguration()`, `testApiConnection()`) after setup
+- **Use the `importConfiguration()` function** for automated validation
+- **Export configurations without sensitive data** when sharing examples
+- **Review the `config.example.js` file** for comprehensive setup guidance
+
+### ❌ DON'T  
+- **Never hardcode API tokens** in script files
+- **Never commit real credentials** to version control
+- **Never use placeholder values** like `'your-api-token-here'` in production
+- **Never share configurations** that include actual API tokens
+- **Never skip validation steps** when setting up production environments
+
+### 🔒 Enhanced Security Features (v2.0)
+- **Automatic placeholder detection** and prevention
+- **API token format validation** with length and character checks  
+- **UUID validation** for session IDs
+- **Environment-specific security settings** 
+- **Comprehensive error handling** with security-focused messages
+- **Configuration import/export** with sensitive data protection
+
 ---
 
-*Choose the template that best matches your use case and customize the values according to your specific requirements.*
+## Migration from v1.0 to v2.0
+
+If you're upgrading from a previous version:
+
+1. **Review your existing configuration** using `exportConfiguration()`
+2. **Add the `ENVIRONMENT` property** to specify your deployment environment
+3. **Consider adding environment-specific settings** for rate limiting and logging
+4. **Test your configuration** using the enhanced validation functions
+5. **Update any automation scripts** to use the new `importConfiguration()` function
+
+---
+
+*Choose the template that best matches your use case and customize the values according to your specific requirements. Always prioritize security by using actual credentials only in Google Apps Script properties, never in template files.*
