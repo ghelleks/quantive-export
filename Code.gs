@@ -1009,6 +1009,248 @@ class GoogleDocsReportGenerator {
   }
 }
 
+/**
+ * Google Sheets Report Generator for Quantive session tracking
+ */
+class GoogleSheetsReportGenerator {
+  
+  /**
+   * Constructor
+   * @param {string} sheetId - Google Sheet ID (optional, will create new if not provided)
+   */
+  constructor(sheetId = null) {
+    this.sheetId = sheetId;
+    this.spreadsheet = null;
+    this.sheet = null;
+  }
+  
+  /**
+   * Generate a row entry in Google Sheets
+   * @param {ReportSummary} reportSummary - Report summary data
+   * @param {DataProcessor} processor - Data processor for insights
+   * @returns {string} Spreadsheet URL
+   */
+  generateReport(reportSummary, processor) {
+    try {
+      Logger.log('Generating Google Sheets report...');
+      
+      // Initialize spreadsheet
+      this.initializeSpreadsheet(reportSummary);
+      
+      // Ensure headers exist
+      this.ensureHeaders();
+      
+      // Add data row
+      const rowData = this.prepareRowData(reportSummary, processor);
+      this.appendDataRow(rowData);
+      
+      // Apply formatting
+      this.applyFormatting();
+      
+      const url = this.spreadsheet.getUrl();
+      Logger.log(`Google Sheets report generated: ${url}`);
+      
+      return url;
+      
+    } catch (error) {
+      Logger.log(`Error generating Google Sheets report: ${error.toString()}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Initialize spreadsheet (create new or open existing)
+   * @param {ReportSummary} reportSummary - Report summary for title
+   */
+  initializeSpreadsheet(reportSummary) {
+    const title = `Quantive Session Tracking - ${reportSummary.sessionInfo.name}`;
+    
+    if (this.sheetId) {
+      try {
+        this.spreadsheet = SpreadsheetApp.openById(this.sheetId);
+        this.spreadsheet.rename(title);
+        Logger.log('Opened existing spreadsheet');
+      } catch (error) {
+        Logger.log('Could not open existing spreadsheet, creating new one');
+        this.spreadsheet = SpreadsheetApp.create(title);
+        this.sheetId = this.spreadsheet.getId();
+      }
+    } else {
+      this.spreadsheet = SpreadsheetApp.create(title);
+      this.sheetId = this.spreadsheet.getId();
+      Logger.log('Created new spreadsheet');
+    }
+    
+    // Get or create the main sheet
+    this.sheet = this.spreadsheet.getActiveSheet();
+    this.sheet.setName('Quantive Reports');
+  }
+  
+  /**
+   * Ensure column headers exist
+   */
+  ensureHeaders() {
+    const headers = this.getColumnHeaders();
+    
+    // Check if headers already exist
+    const existingData = this.sheet.getDataRange();
+    if (existingData.getNumRows() === 0 || this.sheet.getRange(1, 1).getValue() !== headers[0]) {
+      // Insert headers
+      this.sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      
+      // Format headers
+      const headerRange = this.sheet.getRange(1, 1, 1, headers.length);
+      headerRange.setFontWeight('bold');
+      headerRange.setBackground('#4285F4');
+      headerRange.setFontColor('#FFFFFF');
+      
+      Logger.log('Headers added to spreadsheet');
+    }
+  }
+  
+  /**
+   * Get column headers for the sheet
+   * @returns {Array<string>} Array of column headers
+   */
+  getColumnHeaders() {
+    return [
+      'Report Date',
+      'Session Name',
+      'Session ID',
+      'Overall Progress (%)',
+      'Total Objectives',
+      'Total Key Results',
+      'On Track',
+      'At Risk',
+      'Behind',
+      'Completed',
+      'Not Started',
+      'Recent Updates',
+      'Days Remaining',
+      'Key Insights',
+      'Generated At'
+    ];
+  }
+  
+  /**
+   * Prepare row data from report summary
+   * @param {ReportSummary} reportSummary - Report summary data
+   * @param {DataProcessor} processor - Data processor for insights
+   * @returns {Array} Row data array
+   */
+  prepareRowData(reportSummary, processor) {
+    const insights = processor.generateInsights(reportSummary);
+    const keyInsights = insights.slice(0, 3).join(' | '); // Take first 3 insights
+    
+    return [
+      DataTransformUtils.formatDate(new Date()), // Report Date
+      reportSummary.sessionInfo.name, // Session Name
+      reportSummary.sessionInfo.id, // Session ID
+      Math.round(reportSummary.overallProgress * 100) / 100, // Overall Progress (%)
+      reportSummary.totalObjectives, // Total Objectives
+      reportSummary.totalKeyResults, // Total Key Results
+      reportSummary.statusCounts['On Track'] || 0, // On Track
+      reportSummary.statusCounts['At Risk'] || 0, // At Risk
+      reportSummary.statusCounts['Behind'] || 0, // Behind
+      reportSummary.statusCounts['Completed'] || 0, // Completed
+      reportSummary.statusCounts['Not Started'] || 0, // Not Started
+      reportSummary.recentlyUpdatedKRs.length, // Recent Updates
+      reportSummary.sessionInfo.daysRemaining, // Days Remaining
+      keyInsights, // Key Insights
+      reportSummary.generatedAt.toLocaleString() // Generated At
+    ];
+  }
+  
+  /**
+   * Append data row to the sheet
+   * @param {Array} rowData - Row data array
+   */
+  appendDataRow(rowData) {
+    const lastRow = this.sheet.getLastRow();
+    const newRow = lastRow + 1;
+    
+    this.sheet.getRange(newRow, 1, 1, rowData.length).setValues([rowData]);
+    Logger.log(`Data row added at row ${newRow}`);
+  }
+  
+  /**
+   * Apply formatting to the sheet
+   */
+  applyFormatting() {
+    const lastRow = this.sheet.getLastRow();
+    const lastCol = this.sheet.getLastColumn();
+    
+    if (lastRow <= 1) return; // No data rows to format
+    
+    // Format data range
+    const dataRange = this.sheet.getRange(2, 1, lastRow - 1, lastCol);
+    
+    // Alternate row colors
+    dataRange.applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY);
+    
+    // Format percentage column (Overall Progress)
+    const progressCol = 4; // Column D
+    if (lastCol >= progressCol) {
+      const progressRange = this.sheet.getRange(2, progressCol, lastRow - 1, 1);
+      progressRange.setNumberFormat('0.0%');
+    }
+    
+    // Format date columns
+    const dateCol = 1; // Column A (Report Date)
+    const generatedCol = 15; // Column O (Generated At)
+    
+    if (lastCol >= dateCol) {
+      const dateRange = this.sheet.getRange(2, dateCol, lastRow - 1, 1);
+      dateRange.setNumberFormat('yyyy-mm-dd');
+    }
+    
+    if (lastCol >= generatedCol) {
+      const generatedRange = this.sheet.getRange(2, generatedCol, lastRow - 1, 1);
+      generatedRange.setNumberFormat('yyyy-mm-dd hh:mm:ss');
+    }
+    
+    // Auto-resize columns
+    this.sheet.autoResizeColumns(1, lastCol);
+    
+    // Freeze header row
+    this.sheet.setFrozenRows(1);
+    
+    Logger.log('Formatting applied to spreadsheet');
+  }
+  
+  /**
+   * Create summary charts (optional enhancement)
+   */
+  createSummaryCharts() {
+    // This could be implemented to add charts showing progress over time
+    // For now, we'll keep it simple with just the data table
+    Logger.log('Chart creation not implemented yet');
+  }
+  
+  /**
+   * Get the spreadsheet ID
+   * @returns {string} Spreadsheet ID
+   */
+  getSpreadsheetId() {
+    return this.sheetId;
+  }
+  
+  /**
+   * Archive old data (keep last N entries)
+   * @param {number} maxRows - Maximum number of data rows to keep
+   */
+  archiveOldData(maxRows = 100) {
+    const totalRows = this.sheet.getLastRow();
+    const dataRows = totalRows - 1; // Excluding header
+    
+    if (dataRows > maxRows) {
+      const rowsToDelete = dataRows - maxRows;
+      this.sheet.deleteRows(2, rowsToDelete); // Delete from row 2 (after header)
+      Logger.log(`Archived ${rowsToDelete} old rows`);
+    }
+  }
+}
+
 // ============================================================================
 // MAIN ENTRY POINT
 // ============================================================================
@@ -1054,7 +1296,21 @@ function generateQuantiveReport() {
       }
     }
     
-    // TODO: Generate Google Sheets report if configured
+    // Generate Google Sheets report
+    if (config.googleSheetId || !config.googleDocId) {
+      const sheetsGenerator = new GoogleSheetsReportGenerator(config.googleSheetId);
+      const sheetUrl = sheetsGenerator.generateReport(reportSummary, processor);
+      Logger.log(`Google Sheets report generated: ${sheetUrl}`);
+      
+      // Update config with new sheet ID if it was created
+      if (!config.googleSheetId) {
+        ConfigManager.setProperty(CONFIG.PROPERTIES.GOOGLE_SHEET_ID, sheetsGenerator.getSpreadsheetId());
+        Logger.log('Saved new Google Sheet ID to configuration');
+      }
+      
+      // Optional: Archive old data to keep sheet manageable
+      sheetsGenerator.archiveOldData(100);
+    }
     
     Logger.log('Quantive report generation completed successfully');
     
