@@ -2135,3 +2135,529 @@ function getExecutionHistory() {
 function setupCustomTrigger(frequency, hour, dayOfWeek, dayOfMonth) {
   return TriggerManager.setupTimeDrivenTrigger(frequency, hour, dayOfWeek, dayOfMonth);
 }
+
+// ============================================================================
+// TESTING & VALIDATION FUNCTIONS
+// ============================================================================
+
+/**
+ * Comprehensive test suite for the Quantive integration
+ */
+class TestSuite {
+  
+  /**
+   * Run all tests and return results
+   * @returns {Object} Test results summary
+   */
+  static runAllTests() {
+    Logger.log('Starting comprehensive test suite...');
+    
+    const results = {
+      timestamp: new Date().toISOString(),
+      tests: [],
+      summary: {
+        total: 0,
+        passed: 0,
+        failed: 0,
+        warnings: 0
+      }
+    };
+    
+    // Run individual test categories
+    results.tests.push(this.testConfiguration());
+    results.tests.push(this.testApiAuthentication());
+    results.tests.push(this.testDataProcessing());
+    results.tests.push(this.testReportGeneration());
+    results.tests.push(this.testErrorHandling());
+    results.tests.push(this.testTriggerManagement());
+    
+    // Calculate summary
+    for (const test of results.tests) {
+      results.summary.total++;
+      if (test.status === 'PASSED') {
+        results.summary.passed++;
+      } else if (test.status === 'FAILED') {
+        results.summary.failed++;
+      } else {
+        results.summary.warnings++;
+      }
+    }
+    
+    // Log summary
+    Logger.log(`Test Summary: ${results.summary.passed}/${results.summary.total} passed, ${results.summary.failed} failed, ${results.summary.warnings} warnings`);
+    
+    return results;
+  }
+  
+  /**
+   * Test configuration management
+   * @returns {Object} Test result
+   */
+  static testConfiguration() {
+    const testName = 'Configuration Management';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      // Test property storage and retrieval
+      const testKey = 'TEST_PROPERTY';
+      const testValue = 'test_value_' + Date.now();
+      
+      ConfigManager.setProperty(testKey, testValue);
+      const retrievedValue = ConfigManager.getProperty(testKey);
+      
+      if (retrievedValue !== testValue) {
+        throw new Error(`Property storage failed: expected ${testValue}, got ${retrievedValue}`);
+      }
+      
+      // Test configuration validation (should fail with missing required props)
+      try {
+        ConfigManager.validateConfig();
+        // If this doesn't throw, check if we actually have config
+        const config = ConfigManager.getConfig();
+        if (!config.apiToken || !config.accountId || !config.sessionId) {
+          return {
+            name: testName,
+            status: 'WARNING',
+            message: 'Configuration validation passed but required properties appear to be missing',
+            details: 'This is expected if the script is not yet configured'
+          };
+        }
+      } catch (validationError) {
+        // This is expected if not configured
+        Logger.log('Configuration validation failed as expected (not configured)');
+      }
+      
+      // Clean up test property
+      PropertiesService.getScriptProperties().deleteProperty(testKey);
+      
+      return {
+        name: testName,
+        status: 'PASSED',
+        message: 'Configuration management working correctly',
+        details: 'Property storage/retrieval and validation logic verified'
+      };
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'Configuration management test failed'
+      };
+    }
+  }
+  
+  /**
+   * Test API authentication and connection
+   * @returns {Object} Test result
+   */
+  static testApiAuthentication() {
+    const testName = 'API Authentication & Connection';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      // Check if configuration exists
+      const config = ConfigManager.getConfig();
+      
+      if (!config.apiToken || !config.accountId) {
+        return {
+          name: testName,
+          status: 'WARNING',
+          message: 'API credentials not configured',
+          details: 'Cannot test API connection without valid credentials. Run setupConfiguration() first.'
+        };
+      }
+      
+      // Test API client creation
+      const apiClient = new QuantiveApiClient(config.apiToken, config.accountId);
+      
+      if (!apiClient || !apiClient.apiToken || !apiClient.accountId) {
+        throw new Error('API client creation failed');
+      }
+      
+      // Test basic connectivity (this will fail if credentials are invalid)
+      try {
+        apiClient.testConnection();
+        
+        return {
+          name: testName,
+          status: 'PASSED',
+          message: 'API authentication and connection successful',
+          details: 'Successfully connected to Quantive API with provided credentials'
+        };
+        
+      } catch (connectionError) {
+        return {
+          name: testName,
+          status: 'FAILED',
+          message: `API connection failed: ${connectionError.toString()}`,
+          details: 'Check API token, account ID, and network connectivity'
+        };
+      }
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'API authentication test failed'
+      };
+    }
+  }
+  
+  /**
+   * Test data processing algorithms
+   * @returns {Object} Test result
+   */
+  static testDataProcessing() {
+    const testName = 'Data Processing Algorithms';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      // Create mock data for testing
+      const mockSession = new QuantiveSession({
+        id: 'test-session',
+        name: 'Test Session',
+        description: 'Test session for validation',
+        startDate: '2024-01-01T00:00:00Z',
+        endDate: '2024-12-31T23:59:59Z',
+        status: 'ACTIVE'
+      });
+      
+      const mockObjective = new QuantiveObjective({
+        id: 'test-objective',
+        name: 'Test Objective',
+        description: 'Test objective for validation',
+        owner: 'Test Owner',
+        status: 'ON_TRACK',
+        progress: 75
+      });
+      
+      const mockKeyResults = [
+        new QuantiveKeyResult({
+          id: 'test-kr-1',
+          name: 'Test KR 1',
+          status: 'ON_TRACK',
+          progress: 80,
+          currentValue: 80,
+          targetValue: 100,
+          lastUpdated: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() // 2 days ago
+        }),
+        new QuantiveKeyResult({
+          id: 'test-kr-2',
+          name: 'Test KR 2',
+          status: 'AT_RISK',
+          progress: 60,
+          currentValue: 60,
+          targetValue: 100,
+          lastUpdated: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() // 5 days ago
+        })
+      ];
+      
+      mockObjective.keyResults = mockKeyResults;
+      mockSession.objectives = [mockObjective];
+      
+      // Test data processor
+      const processor = new DataProcessor(7); // 7 day lookback
+      const reportSummary = processor.processSessionData(mockSession);
+      
+      // Validate results
+      if (reportSummary.totalObjectives !== 1) {
+        throw new Error(`Expected 1 objective, got ${reportSummary.totalObjectives}`);
+      }
+      
+      if (reportSummary.totalKeyResults !== 2) {
+        throw new Error(`Expected 2 key results, got ${reportSummary.totalKeyResults}`);
+      }
+      
+      if (reportSummary.overallProgress !== 70) { // (80 + 60) / 2
+        throw new Error(`Expected 70% progress, got ${reportSummary.overallProgress}%`);
+      }
+      
+      if (reportSummary.statusCounts['On Track'] !== 1) {
+        throw new Error(`Expected 1 'On Track' KR, got ${reportSummary.statusCounts['On Track']}`);
+      }
+      
+      if (reportSummary.recentlyUpdatedKRs.length !== 1) { // Only 1 KR updated within 7 days
+        throw new Error(`Expected 1 recently updated KR, got ${reportSummary.recentlyUpdatedKRs.length}`);
+      }
+      
+      // Test insights generation
+      const insights = processor.generateInsights(reportSummary);
+      if (!insights || insights.length === 0) {
+        throw new Error('Insights generation failed');
+      }
+      
+      return {
+        name: testName,
+        status: 'PASSED',
+        message: 'Data processing algorithms working correctly',
+        details: `Processed ${reportSummary.totalObjectives} objectives, ${reportSummary.totalKeyResults} KRs, generated ${insights.length} insights`
+      };
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'Data processing algorithm test failed'
+      };
+    }
+  }
+  
+  /**
+   * Test report generation functions
+   * @returns {Object} Test result
+   */
+  static testReportGeneration() {
+    const testName = 'Report Generation';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      // Create mock report summary for testing
+      const mockSummary = new ReportSummary();
+      mockSummary.sessionInfo = {
+        id: 'test-session',
+        name: 'Test Session',
+        description: 'Test session for report generation',
+        startDate: new Date('2024-01-01'),
+        endDate: new Date('2024-12-31'),
+        status: 'ACTIVE',
+        daysRemaining: 100
+      };
+      mockSummary.overallProgress = 75;
+      mockSummary.totalObjectives = 3;
+      mockSummary.totalKeyResults = 9;
+      mockSummary.statusCounts = {
+        'On Track': 6,
+        'At Risk': 2,
+        'Behind': 1,
+        'Completed': 0,
+        'Not Started': 0
+      };
+      mockSummary.recentlyUpdatedKRs = [
+        { name: 'Test KR 1', status: 'On Track', progress: 80 },
+        { name: 'Test KR 2', status: 'At Risk', progress: 45 }
+      ];
+      
+      const mockProcessor = new DataProcessor();
+      
+      // Test Google Docs generation
+      let docsResult = null;
+      try {
+        const docsGenerator = new GoogleDocsReportGenerator();
+        docsResult = docsGenerator.generateReport(mockSummary, mockProcessor);
+        
+        if (!docsResult || !docsResult.includes('docs.google.com')) {
+          throw new Error('Google Docs report generation failed to return valid URL');
+        }
+      } catch (docsError) {
+        Logger.log(`Google Docs test failed: ${docsError.toString()}`);
+      }
+      
+      // Test Google Sheets generation
+      let sheetsResult = null;
+      try {
+        const sheetsGenerator = new GoogleSheetsReportGenerator();
+        sheetsResult = sheetsGenerator.generateReport(mockSummary, mockProcessor);
+        
+        if (!sheetsResult || !sheetsResult.includes('docs.google.com/spreadsheets')) {
+          throw new Error('Google Sheets report generation failed to return valid URL');
+        }
+      } catch (sheetsError) {
+        Logger.log(`Google Sheets test failed: ${sheetsError.toString()}`);
+      }
+      
+      // Clean up test documents
+      if (docsResult) {
+        try {
+          const docId = docsResult.split('/d/')[1].split('/')[0];
+          DriveApp.getFileById(docId).setTrashed(true);
+        } catch (cleanupError) {
+          Logger.log(`Failed to cleanup test doc: ${cleanupError.toString()}`);
+        }
+      }
+      
+      if (sheetsResult) {
+        try {
+          const sheetId = sheetsResult.split('/d/')[1].split('/')[0];
+          DriveApp.getFileById(sheetId).setTrashed(true);
+        } catch (cleanupError) {
+          Logger.log(`Failed to cleanup test sheet: ${cleanupError.toString()}`);
+        }
+      }
+      
+      if (docsResult && sheetsResult) {
+        return {
+          name: testName,
+          status: 'PASSED',
+          message: 'Report generation working correctly',
+          details: 'Successfully generated both Google Docs and Sheets reports'
+        };
+      } else if (docsResult || sheetsResult) {
+        return {
+          name: testName,
+          status: 'WARNING',
+          message: 'Partial report generation success',
+          details: `${docsResult ? 'Docs' : 'Sheets'} generation succeeded, ${!docsResult ? 'Docs' : 'Sheets'} failed`
+        };
+      } else {
+        return {
+          name: testName,
+          status: 'FAILED',
+          message: 'Report generation failed',
+          details: 'Both Google Docs and Sheets generation failed'
+        };
+      }
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'Report generation test failed'
+      };
+    }
+  }
+  
+  /**
+   * Test error handling mechanisms
+   * @returns {Object} Test result
+   */
+  static testErrorHandling() {
+    const testName = 'Error Handling & Resilience';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      // Test error classification
+      const networkError = new Error('Network connection failed');
+      const networkClassification = ErrorHandler.classifyError(networkError, 'test');
+      
+      if (networkClassification.type !== 'NETWORK_ERROR' || !networkClassification.retryable) {
+        throw new Error('Network error classification failed');
+      }
+      
+      const authError = new Error('Authentication failed with 401');
+      const authClassification = ErrorHandler.classifyError(authError, 'test');
+      
+      if (authClassification.type !== 'AUTH_ERROR' || authClassification.retryable) {
+        throw new Error('Auth error classification failed');
+      }
+      
+      // Test retry delay calculation
+      const retryDelay = ErrorHandler.calculateRetryDelay(2, 'NETWORK_ERROR');
+      if (retryDelay <= 0 || retryDelay > 60000) {
+        throw new Error(`Invalid retry delay: ${retryDelay}ms`);
+      }
+      
+      // Test fallback report creation
+      const fallbackResult = ErrorHandler.createFallbackReport(
+        { partialData: 'test' },
+        [{ context: 'test', message: 'Test error' }]
+      );
+      
+      if (!fallbackResult.fallbackReportUrl) {
+        throw new Error('Fallback report creation failed');
+      }
+      
+      // Clean up fallback report
+      try {
+        const docId = fallbackResult.fallbackReportUrl.split('/d/')[1].split('/')[0];
+        DriveApp.getFileById(docId).setTrashed(true);
+      } catch (cleanupError) {
+        Logger.log(`Failed to cleanup fallback report: ${cleanupError.toString()}`);
+      }
+      
+      return {
+        name: testName,
+        status: 'PASSED',
+        message: 'Error handling mechanisms working correctly',
+        details: 'Error classification, retry logic, and fallback report generation verified'
+      };
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'Error handling test failed'
+      };
+    }
+  }
+  
+  /**
+   * Test trigger management
+   * @returns {Object} Test result
+   */
+  static testTriggerManagement() {
+    const testName = 'Trigger Management';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      // Test trigger status (should work even without triggers)
+      const status = TriggerManager.getTriggerStatus();
+      
+      if (!status || typeof status.active !== 'boolean') {
+        throw new Error('Trigger status check failed');
+      }
+      
+      // Test getting active triggers
+      const triggers = TriggerManager.getActiveTriggers();
+      
+      if (!Array.isArray(triggers)) {
+        throw new Error('Get active triggers failed');
+      }
+      
+      return {
+        name: testName,
+        status: 'PASSED',
+        message: 'Trigger management working correctly',
+        details: `Found ${triggers.length} active triggers, status check functional`
+      };
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'Trigger management test failed'
+      };
+    }
+  }
+}
+
+/**
+ * Run comprehensive test suite
+ */
+function runTests() {
+  const results = TestSuite.runAllTests();
+  Logger.log('Test Results: ' + JSON.stringify(results, null, 2));
+  return results;
+}
+
+/**
+ * Test individual components
+ */
+function testConfigurationOnly() {
+  return TestSuite.testConfiguration();
+}
+
+function testApiOnly() {
+  return TestSuite.testApiAuthentication();
+}
+
+function testDataProcessingOnly() {
+  return TestSuite.testDataProcessing();
+}
+
+function testReportGenerationOnly() {
+  return TestSuite.testReportGeneration();
+}
+
+function testErrorHandlingOnly() {
+  return TestSuite.testErrorHandling();
+}
+
+function testTriggerManagementOnly() {
+  return TestSuite.testTriggerManagement();
+}
