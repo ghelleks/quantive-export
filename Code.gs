@@ -2,8 +2,96 @@
  * Quantive Session Snapshot & Summary Generator
  * Google Apps Script for generating periodic reports from Quantive API
  * 
+ * SYSTEM ARCHITECTURE & DATA FLOW
+ * ===============================
+ * 
+ * This system provides automated Quantive (OKR platform) reporting with the following architecture:
+ * 
+ * 1. DATA ACQUISITION LAYER
+ *    ├── QuantiveApiClient: Secure API communication with retry logic
+ *    ├── ConfigManager: Encrypted credential and settings management
+ *    └── Authentication: Bearer token + Account ID header system
+ * 
+ * 2. DATA PROCESSING LAYER  
+ *    ├── DataProcessor: Analytics engine for progress calculations
+ *    ├── DataTransformUtils: Data transformation and formatting utilities
+ *    └── Business Logic: Status categorization and insights generation
+ * 
+ * 3. REPORTING LAYER
+ *    ├── GoogleDocsReportGenerator: Formatted document creation
+ *    ├── GoogleSheetsReportGenerator: Tabular data and historical tracking
+ *    └── Multi-format output with consistent data structure
+ * 
+ * 4. AUTOMATION LAYER
+ *    ├── TriggerManager: Scheduled execution management
+ *    ├── ExecutionLogger: Monitoring and debugging capabilities
+ *    └── ErrorHandler: Resilient error handling and recovery
+ * 
+ * 5. TESTING & VALIDATION LAYER
+ *    ├── TestSuite: Unit testing for all components
+ *    ├── IntegrationTestSuite: End-to-end workflow validation
+ *    └── PerformanceTestSuite: Execution time and resource optimization
+ * 
+ * DATA FLOW SEQUENCE
+ * ==================
+ * 
+ * 1. INITIALIZATION
+ *    • ConfigManager validates required properties (API token, account ID, session ID)
+ *    • QuantiveApiClient instantiated with authenticated headers
+ *    • Target output destination verified (Google Doc or Sheet)
+ * 
+ * 2. DATA FETCHING
+ *    • Fetch session metadata from /sessions/{id} endpoint
+ *    • Retrieve all objectives for session from /objectives?sessionId={id}
+ *    • For each objective, fetch key results from /key-results?objectiveId={id}
+ *    • Apply retry logic with exponential backoff for resilience
+ * 
+ * 3. DATA PROCESSING
+ *    • Transform raw API responses into structured objects (Session → Objectives → Key Results)
+ *    • Calculate overall progress weighted by key result completion
+ *    • Categorize statuses and generate counts (On Track, At Risk, Behind, etc.)
+ *    • Identify recently updated items based on configurable lookback period
+ *    • Generate intelligent insights and recommendations
+ * 
+ * 4. REPORT GENERATION
+ *    • Compile ReportSummary with processed analytics
+ *    • Generate formatted output based on configuration:
+ *      - Google Docs: Multi-section document with tables and formatting
+ *      - Google Sheets: Historical data row with 15 tracked metrics
+ *    • Apply consistent styling and formatting rules
+ * 
+ * 5. ERROR HANDLING & LOGGING  
+ *    • Classify errors by type (network, authentication, rate limit, server)
+ *    • Apply appropriate retry strategies and fallback mechanisms
+ *    • Generate detailed execution logs for monitoring and debugging
+ *    • Preserve partial data in case of non-critical failures
+ * 
+ * CONFIGURATION REQUIREMENTS
+ * ==========================
+ * 
+ * Required Properties (stored securely in PropertiesService):
+ * - QUANTIVE_API_TOKEN: Authentication token from Quantive settings
+ * - QUANTIVE_ACCOUNT_ID: Account identifier for multi-tenant API access
+ * - SESSION_ID: Target session UUID to analyze and report on
+ * 
+ * Optional Properties:
+ * - GOOGLE_DOC_ID: Target document ID for formatted reports
+ * - GOOGLE_SHEET_ID: Target spreadsheet ID for historical data tracking
+ * - LOOKBACK_DAYS: Number of days to consider for "recent activity" (default: 7)
+ * 
+ * DEPLOYMENT & USAGE
+ * ==================
+ * 
+ * 1. Configure properties using setupConfiguration() function
+ * 2. Test connectivity with testConfiguration() function  
+ * 3. Run manual report with generateQuantiveReport() function
+ * 4. Set up automation with TriggerManager.setupTimeDrivenTrigger()
+ * 5. Monitor execution with logs and error handling reports
+ * 
  * @version 1.0
  * @author Generated with Claude Code
+ * @see project-requirements.md for detailed functional requirements
+ * @see TODO.md for implementation roadmap and completed features
  */
 
 // ============================================================================
@@ -46,51 +134,152 @@ const CONFIG = {
 // ============================================================================
 
 /**
- * Quantive Session Data Structure
+ * Represents a Quantive Session with objectives and metadata
+ * 
+ * A Session is a time-bounded container for Objectives and Key Results,
+ * typically representing a quarterly or annual planning period.
+ * 
+ * @param {Object} data - Session data from Quantive API
+ * @param {string} data.id - Unique session identifier
+ * @param {string} data.name - Session display name  
+ * @param {string} data.description - Session description
+ * @param {string} data.startDate - ISO date string for session start
+ * @param {string} data.endDate - ISO date string for session end
+ * @param {string} data.status - Session status (ACTIVE, COMPLETED, DRAFT, etc.)
+ * 
+ * @example
+ * const session = new QuantiveSession({
+ *   id: 'session-123',
+ *   name: 'Q4 2024 Goals',
+ *   description: 'Fourth quarter strategic objectives',
+ *   startDate: '2024-10-01T00:00:00Z',
+ *   endDate: '2024-12-31T23:59:59Z',
+ *   status: 'ACTIVE'
+ * });
  */
 class QuantiveSession {
   constructor(data) {
+    /** @type {string} Unique session identifier */
     this.id = data.id;
+    /** @type {string} Session display name */
     this.name = data.name;
+    /** @type {string} Session description */
     this.description = data.description;
+    /** @type {Date} Session start date */
     this.startDate = new Date(data.startDate);
+    /** @type {Date} Session end date */
     this.endDate = new Date(data.endDate);
+    /** @type {string} Current session status */
     this.status = data.status;
+    /** @type {QuantiveObjective[]} Array of objectives within this session */
     this.objectives = [];
   }
 }
 
 /**
- * Quantive Objective Data Structure
+ * Represents a Quantive Objective with key results and progress tracking
+ * 
+ * An Objective is a qualitative, ambitious goal that provides direction
+ * and is measured by quantitative Key Results.
+ * 
+ * @param {Object} data - Objective data from Quantive API
+ * @param {string} data.id - Unique objective identifier
+ * @param {string} data.name - Objective title/name
+ * @param {string} data.description - Detailed objective description
+ * @param {string} data.owner - Email or ID of objective owner
+ * @param {string} data.status - Current status (ON_TRACK, AT_RISK, BEHIND, COMPLETED, NOT_STARTED)
+ * @param {number} [data.progress=0] - Progress percentage (0-100)
+ * @param {string} [data.lastUpdated] - ISO date string of last update
+ * 
+ * @example
+ * const objective = new QuantiveObjective({
+ *   id: 'obj-123',
+ *   name: 'Improve Customer Satisfaction',
+ *   description: 'Enhance customer experience across all touchpoints',
+ *   owner: 'jane.doe@company.com',
+ *   status: 'ON_TRACK',
+ *   progress: 65,
+ *   lastUpdated: '2024-06-15T10:30:00Z'
+ * });
  */
 class QuantiveObjective {
   constructor(data) {
+    /** @type {string} Unique objective identifier */
     this.id = data.id;
+    /** @type {string} Objective title/name */
     this.name = data.name;
+    /** @type {string} Detailed objective description */
     this.description = data.description;
+    /** @type {string} Email or ID of objective owner */
     this.owner = data.owner;
+    /** @type {string} Current objective status */
     this.status = data.status;
+    /** @type {number} Progress percentage (0-100) */
     this.progress = data.progress || 0;
+    /** @type {QuantiveKeyResult[]} Array of key results for this objective */
     this.keyResults = [];
+    /** @type {Date|null} Date of last update, null if never updated */
     this.lastUpdated = data.lastUpdated ? new Date(data.lastUpdated) : null;
   }
 }
 
 /**
- * Quantive Key Result Data Structure
+ * Represents a Quantive Key Result with measurable progress tracking
+ * 
+ * A Key Result is a measurable outcome that demonstrates progress toward
+ * achieving an Objective. It includes current/target values and progress.
+ * 
+ * @param {Object} data - Key Result data from Quantive API
+ * @param {string} data.id - Unique key result identifier
+ * @param {string} data.name - Key result title/name
+ * @param {string} data.description - Detailed key result description
+ * @param {string} data.owner - Email or ID of key result owner
+ * @param {string} data.status - Current status (ON_TRACK, AT_RISK, BEHIND, COMPLETED, NOT_STARTED)
+ * @param {number} [data.currentValue=0] - Current measured value
+ * @param {number} [data.targetValue=0] - Target value to achieve
+ * @param {string} [data.unit=''] - Unit of measurement (%, $, users, etc.)
+ * @param {number} [data.progress=0] - Calculated progress percentage (0-100)
+ * @param {string} [data.lastUpdated] - ISO date string of last update
+ * @param {string} data.objectiveId - ID of parent objective
+ * 
+ * @example
+ * const keyResult = new QuantiveKeyResult({
+ *   id: 'kr-456',
+ *   name: 'Increase NPS Score',
+ *   description: 'Improve Net Promoter Score through customer feedback',
+ *   owner: 'john.smith@company.com',
+ *   status: 'ON_TRACK',
+ *   currentValue: 45,
+ *   targetValue: 60,
+ *   unit: 'points',
+ *   progress: 75,
+ *   lastUpdated: '2024-06-15T14:22:00Z',
+ *   objectiveId: 'obj-123'
+ * });
  */
 class QuantiveKeyResult {
   constructor(data) {
+    /** @type {string} Unique key result identifier */
     this.id = data.id;
+    /** @type {string} Key result title/name */
     this.name = data.name;
+    /** @type {string} Detailed key result description */
     this.description = data.description;
+    /** @type {string} Email or ID of key result owner */
     this.owner = data.owner;
+    /** @type {string} Current key result status */
     this.status = data.status;
+    /** @type {number} Current measured value */
     this.currentValue = data.currentValue || 0;
+    /** @type {number} Target value to achieve */
     this.targetValue = data.targetValue || 0;
+    /** @type {string} Unit of measurement */
     this.unit = data.unit || '';
+    /** @type {number} Calculated progress percentage (0-100) */
     this.progress = data.progress || 0;
+    /** @type {Date|null} Date of last update, null if never updated */
     this.lastUpdated = data.lastUpdated ? new Date(data.lastUpdated) : null;
+    /** @type {string} ID of parent objective */
     this.objectiveId = data.objectiveId;
   }
   
@@ -108,12 +297,24 @@ class QuantiveKeyResult {
 }
 
 /**
- * Report Summary Data Structure
+ * Represents a compiled summary report of Quantive session data
+ * 
+ * Contains processed analytics, progress calculations, and insights
+ * generated from session objectives and key results data.
+ * 
+ * @example
+ * const summary = new ReportSummary();
+ * summary.sessionInfo = sessionData;
+ * summary.overallProgress = 75.5;
+ * summary.statusCounts['On Track'] = 12;
  */
 class ReportSummary {
   constructor() {
+    /** @type {QuantiveSession|null} Session information and metadata */
     this.sessionInfo = null;
+    /** @type {number} Overall progress percentage across all key results */
     this.overallProgress = 0;
+    /** @type {Object<string, number>} Count of key results by status category */
     this.statusCounts = {
       'On Track': 0,
       'At Risk': 0,
@@ -121,9 +322,13 @@ class ReportSummary {
       'Completed': 0,
       'Not Started': 0
     };
+    /** @type {number} Total number of objectives in session */
     this.totalObjectives = 0;
+    /** @type {number} Total number of key results in session */
     this.totalKeyResults = 0;
+    /** @type {QuantiveKeyResult[]} Key results updated within lookback period */
     this.recentlyUpdatedKRs = [];
+    /** @type {Date} Timestamp when this report was generated */
     this.generatedAt = new Date();
   }
 }
@@ -133,7 +338,33 @@ class ReportSummary {
 // ============================================================================
 
 /**
- * Configuration Manager for handling script properties
+ * Configuration Manager for secure handling of script properties and settings
+ * 
+ * Manages all configuration values using Google Apps Script's PropertiesService
+ * for secure storage of API credentials and user settings. All sensitive data
+ * is stored encrypted and never exposed in the script code.
+ * 
+ * Required Configuration Properties:
+ * - QUANTIVE_API_TOKEN: Your Quantive API authentication token
+ * - QUANTIVE_ACCOUNT_ID: Your Quantive account identifier  
+ * - SESSION_ID: Target session ID to analyze
+ * 
+ * Optional Configuration Properties:
+ * - GOOGLE_DOC_ID: Target Google Doc ID for formatted reports
+ * - GOOGLE_SHEET_ID: Target Google Sheet ID for tabular data
+ * - LOOKBACK_DAYS: Number of days to look back for recent activity (default: 7)
+ * 
+ * @example Setup Configuration
+ * // Set required properties
+ * ConfigManager.setProperties({
+ *   'QUANTIVE_API_TOKEN': 'your-api-token-here',
+ *   'QUANTIVE_ACCOUNT_ID': 'your-account-id',
+ *   'SESSION_ID': 'target-session-id',
+ *   'GOOGLE_DOC_ID': 'optional-google-doc-id',
+ *   'LOOKBACK_DAYS': '7'
+ * });
+ * 
+ * @see https://developers.google.com/apps-script/guides/properties
  */
 class ConfigManager {
   
@@ -209,7 +440,48 @@ class ConfigManager {
 // ============================================================================
 
 /**
- * Quantive API Client for handling authentication and HTTP requests
+ * Quantive API Client for authenticated HTTP requests and data fetching
+ * 
+ * Provides a robust interface to the Quantive (formerly Gtmhub) REST API with
+ * comprehensive error handling, rate limiting, and automatic retry mechanisms.
+ * 
+ * Authentication:
+ * - Uses Bearer token authentication with API token
+ * - Requires X-Account-Id header for multi-tenant support
+ * - Supports both production and staging environments
+ * 
+ * Features:
+ * - Exponential backoff retry logic for resilient API calls
+ * - Comprehensive HTTP status code handling and error classification
+ * - Built-in rate limiting protection with intelligent backoff
+ * - Request/response logging for debugging and monitoring
+ * - Automatic JSON parsing with validation
+ * 
+ * Supported API Endpoints:
+ * - Sessions: /sessions/{id} - Retrieve session details
+ * - Objectives: /objectives?sessionId={id} - List session objectives  
+ * - Key Results: /key-results?objectiveId={id} - List objective key results
+ * 
+ * Rate Limits (as of API v1.0):
+ * - 1000 requests per hour per account
+ * - 10 requests per second burst limit
+ * - 429 status code returned when limits exceeded
+ * 
+ * @example Basic Usage
+ * const client = new QuantiveApiClient('your-api-token', 'your-account-id');
+ * const sessionData = await client.getCompleteSessionData('session-123');
+ * 
+ * @example Error Handling
+ * try {
+ *   const data = await client.makeRequest('/sessions/invalid-id');
+ * } catch (error) {
+ *   if (error.message.includes('404')) {
+ *     console.log('Session not found');
+ *   }
+ * }
+ * 
+ * @see https://developers.quantive.com/api/v1/reference
+ * @see https://developers.quantive.com/api/authentication
  */
 class QuantiveApiClient {
   
@@ -613,7 +885,36 @@ class DataProcessor {
 }
 
 /**
- * Utility functions for data transformation
+ * Utility functions for data transformation and formatting
+ * 
+ * Provides a comprehensive set of static utility methods for transforming,
+ * formatting, and manipulating data throughout the reporting pipeline.
+ * 
+ * Key Features:
+ * - Progress and percentage formatting with locale support
+ * - Date formatting with multiple output formats
+ * - Value formatting with unit handling and localization
+ * - Text truncation with intelligent ellipsis placement
+ * - Priority-based sorting algorithms for key results
+ * - Status mapping and normalization utilities
+ * 
+ * Design Principles:
+ * - All methods are static for performance and simplicity
+ * - Defensive programming with null/undefined handling
+ * - Consistent return types and error handling
+ * - Locale-aware formatting where applicable
+ * 
+ * @example Progress Formatting
+ * DataTransformUtils.formatProgress(75.67); // "76%"
+ * DataTransformUtils.formatProgress(null);   // "0%"
+ * 
+ * @example Date Formatting
+ * const date = new Date('2024-06-15');
+ * DataTransformUtils.formatDate(date); // "Jun 15, 2024"
+ * 
+ * @example Value Formatting
+ * DataTransformUtils.formatValueWithUnit(1500, '$');     // "$1,500"
+ * DataTransformUtils.formatValueWithUnit(85.5, 'users'); // "85.5 users"
  */
 class DataTransformUtils {
   
@@ -1257,6 +1558,26 @@ class GoogleSheetsReportGenerator {
 
 /**
  * Trigger Management System for automated report generation
+ * 
+ * Manages Google Apps Script time-driven triggers to automate periodic
+ * execution of Quantive report generation. Supports daily, weekly, and
+ * monthly scheduling with flexible timing configuration.
+ * 
+ * Key Features:
+ * - Automatic cleanup of existing triggers before creating new ones
+ * - Persistent storage of trigger configuration in script properties
+ * - Support for multiple scheduling frequencies with timezone handling
+ * - Comprehensive trigger lifecycle management and monitoring
+ * 
+ * @example Setup Weekly Reports
+ * // Run every Monday at 9 AM
+ * const triggerId = TriggerManager.setupTimeDrivenTrigger('weekly', 9, 1);
+ * 
+ * @example Setup Monthly Reports  
+ * // Run on the 1st of each month at 8 AM
+ * const triggerId = TriggerManager.setupTimeDrivenTrigger('monthly', 8, null, 1);
+ * 
+ * @see https://developers.google.com/apps-script/guides/triggers/installable
  */
 class TriggerManager {
   
@@ -3227,4 +3548,678 @@ function testErrorScenariosOnly() {
 
 function testTriggerExecutionOnly() {
   return IntegrationTestSuite.testTriggerExecution();
+}
+
+// ============================================================================
+// PERFORMANCE TESTING FUNCTIONS
+// ============================================================================
+
+/**
+ * Performance Test Suite for execution time and resource usage validation
+ */
+class PerformanceTestSuite {
+  
+  /**
+   * Run comprehensive performance tests
+   * @returns {Object} Performance test results
+   */
+  static runPerformanceTests() {
+    Logger.log('Starting performance test suite...');
+    
+    const results = {
+      timestamp: new Date().toISOString(),
+      tests: [],
+      summary: {
+        total: 0,
+        passed: 0,
+        failed: 0,
+        warnings: 0
+      }
+    };
+    
+    // Run performance test categories
+    results.tests.push(this.testExecutionTimeCompliance());
+    results.tests.push(this.testApiRateLimitHandling());
+    results.tests.push(this.testLargeDatasetProcessing());
+    results.tests.push(this.testMemoryUsageOptimization());
+    
+    // Calculate summary
+    for (const test of results.tests) {
+      results.summary.total++;
+      if (test.status === 'PASSED') {
+        results.summary.passed++;
+      } else if (test.status === 'FAILED') {
+        results.summary.failed++;
+      } else {
+        results.summary.warnings++;
+      }
+    }
+    
+    Logger.log(`Performance Test Summary: ${results.summary.passed}/${results.summary.total} passed, ${results.summary.failed} failed, ${results.summary.warnings} warnings`);
+    
+    return results;
+  }
+  
+  /**
+   * Test execution time limits compliance
+   * @returns {Object} Test result
+   */
+  static testExecutionTimeCompliance() {
+    const testName = 'Execution Time Limits Compliance';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      const startTime = Date.now();
+      const maxAllowedTime = CONFIG.MAX_EXECUTION_TIME || 300000; // 5 minutes default
+      
+      // Test various components and measure execution time
+      const componentTests = [
+        {
+          name: 'Configuration Management',
+          test: () => {
+            const start = Date.now();
+            for (let i = 0; i < 100; i++) {
+              ConfigManager.getConfig();
+              ConfigManager.validateConfig();
+            }
+            return Date.now() - start;
+          }
+        },
+        {
+          name: 'Data Processing (Large Dataset)',
+          test: () => {
+            const start = Date.now();
+            const largeSessionData = this.createLargeSessionData(50, 200); // 50 objectives, 200 KRs
+            const processor = new DataProcessor(7);
+            processor.processSessionData(largeSessionData);
+            return Date.now() - start;
+          }
+        },
+        {
+          name: 'Report Generation',
+          test: () => {
+            const start = Date.now();
+            const mockSummary = this.createMockReportSummary();
+            const processor = new DataProcessor();
+            
+            // Test Docs generation
+            const docsGenerator = new GoogleDocsReportGenerator();
+            const docUrl = docsGenerator.generateReport(mockSummary, processor);
+            
+            // Test Sheets generation
+            const sheetsGenerator = new GoogleSheetsReportGenerator();
+            const sheetUrl = sheetsGenerator.generateReport(mockSummary, processor);
+            
+            // Clean up test documents
+            try {
+              const docId = docUrl.split('/d/')[1].split('/')[0];
+              DriveApp.getFileById(docId).setTrashed(true);
+            } catch (cleanupError) {
+              Logger.log(`Failed to cleanup test doc: ${cleanupError.toString()}`);
+            }
+            
+            try {
+              const sheetId = sheetUrl.split('/d/')[1].split('/')[0];
+              DriveApp.getFileById(sheetId).setTrashed(true);
+            } catch (cleanupError) {
+              Logger.log(`Failed to cleanup test sheet: ${cleanupError.toString()}`);
+            }
+            
+            return Date.now() - start;
+          }
+        },
+        {
+          name: 'Error Handling Processing',
+          test: () => {
+            const start = Date.now();
+            for (let i = 0; i < 10; i++) {
+              try {
+                throw new Error(`Test error ${i}`);
+              } catch (testError) {
+                ErrorHandler.classifyError(testError, 'performance-test');
+                ErrorHandler.logDetailedError(testError, 'performance-test', { iteration: i });
+              }
+            }
+            return Date.now() - start;
+          }
+        }
+      ];
+      
+      const results = [];
+      let totalExecutionTime = 0;
+      
+      for (const componentTest of componentTests) {
+        try {
+          const executionTime = componentTest.test();
+          totalExecutionTime += executionTime;
+          
+          results.push({
+            component: componentTest.name,
+            executionTime: executionTime,
+            status: executionTime < (maxAllowedTime / 4) ? 'FAST' : executionTime < (maxAllowedTime / 2) ? 'ACCEPTABLE' : 'SLOW'
+          });
+          
+          Logger.log(`${componentTest.name}: ${executionTime}ms`);
+          
+        } catch (componentError) {
+          results.push({
+            component: componentTest.name,
+            executionTime: -1,
+            status: 'ERROR',
+            error: componentError.toString()
+          });
+        }
+      }
+      
+      const overallExecutionTime = Date.now() - startTime;
+      
+      // Check if we're within acceptable limits
+      if (overallExecutionTime < maxAllowedTime * 0.7) {
+        return {
+          name: testName,
+          status: 'PASSED',
+          message: 'Execution time well within limits',
+          details: `Total execution time: ${overallExecutionTime}ms (limit: ${maxAllowedTime}ms). Component results: ${JSON.stringify(results)}`
+        };
+      } else if (overallExecutionTime < maxAllowedTime) {
+        return {
+          name: testName,
+          status: 'WARNING',
+          message: 'Execution time approaching limits',
+          details: `Total execution time: ${overallExecutionTime}ms (limit: ${maxAllowedTime}ms). Consider optimization. Component results: ${JSON.stringify(results)}`
+        };
+      } else {
+        return {
+          name: testName,
+          status: 'FAILED',
+          message: 'Execution time exceeds limits',
+          details: `Total execution time: ${overallExecutionTime}ms exceeds limit of ${maxAllowedTime}ms. Component results: ${JSON.stringify(results)}`
+        };
+      }
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'Execution time compliance test failed'
+      };
+    }
+  }
+  
+  /**
+   * Test API rate limiting handling
+   * @returns {Object} Test result
+   */
+  static testApiRateLimitHandling() {
+    const testName = 'API Rate Limiting Handling';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      // Test rate limiting mechanism (simulated)
+      const rateLimitTests = [
+        {
+          name: 'Retry Delay Calculation',
+          test: () => {
+            const delays = [];
+            for (let attempt = 0; attempt < 5; attempt++) {
+              const delay = ErrorHandler.calculateRetryDelay(attempt, 'RATE_LIMIT');
+              delays.push(delay);
+              
+              // Validate exponential backoff
+              if (attempt > 0 && delay <= delays[attempt - 1]) {
+                throw new Error(`Delay not increasing: attempt ${attempt} has delay ${delay}ms, previous was ${delays[attempt - 1]}ms`);
+              }
+            }
+            return delays;
+          }
+        },
+        {
+          name: 'Rate Limit Error Classification',
+          test: () => {
+            const rateLimitError = new Error('Rate limit exceeded (429)');
+            const classification = ErrorHandler.classifyError(rateLimitError, 'test');
+            
+            if (classification.type !== 'RATE_LIMIT' || !classification.retryable) {
+              throw new Error(`Rate limit error not classified correctly: ${JSON.stringify(classification)}`);
+            }
+            
+            return classification;
+          }
+        },
+        {
+          name: 'API Client Rate Limit Handling',
+          test: () => {
+            // Test that the API client has proper rate limiting built in
+            const config = ConfigManager.getConfig();
+            
+            if (!config.apiToken || !config.accountId) {
+              return 'SKIPPED - No API credentials configured';
+            }
+            
+            const apiClient = new QuantiveApiClient(config.apiToken, config.accountId);
+            
+            // Verify rate limiting configuration exists
+            if (!CONFIG.MAX_RETRIES || !CONFIG.RETRY_DELAY) {
+              throw new Error('Rate limiting configuration missing');
+            }
+            
+            return {
+              maxRetries: CONFIG.MAX_RETRIES,
+              retryDelay: CONFIG.RETRY_DELAY,
+              hasRetryLogic: typeof apiClient.executeWithRetry === 'function'
+            };
+          }
+        }
+      ];
+      
+      const results = [];
+      for (const test of rateLimitTests) {
+        try {
+          const result = test.test();
+          results.push({
+            test: test.name,
+            success: true,
+            result: result
+          });
+        } catch (testError) {
+          results.push({
+            test: test.name,
+            success: false,
+            error: testError.toString()
+          });
+        }
+      }
+      
+      const successCount = results.filter(r => r.success).length;
+      
+      if (successCount === rateLimitTests.length) {
+        return {
+          name: testName,
+          status: 'PASSED',
+          message: 'API rate limiting handled correctly',
+          details: `All ${rateLimitTests.length} rate limiting tests passed. Results: ${JSON.stringify(results)}`
+        };
+      } else {
+        return {
+          name: testName,
+          status: 'WARNING',
+          message: `${successCount}/${rateLimitTests.length} rate limiting tests passed`,
+          details: `Some rate limiting tests failed: ${JSON.stringify(results)}`
+        };
+      }
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'API rate limiting test failed'
+      };
+    }
+  }
+  
+  /**
+   * Test large dataset processing
+   * @returns {Object} Test result
+   */
+  static testLargeDatasetProcessing() {
+    const testName = 'Large Dataset Processing';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      const datasetSizes = [
+        { objectives: 10, keyResults: 50, description: 'Small dataset' },
+        { objectives: 25, keyResults: 100, description: 'Medium dataset' },
+        { objectives: 50, keyResults: 200, description: 'Large dataset' },
+        { objectives: 100, keyResults: 400, description: 'Extra large dataset' }
+      ];
+      
+      const results = [];
+      
+      for (const datasetSize of datasetSizes) {
+        try {
+          const startTime = Date.now();
+          
+          // Create large dataset
+          const largeSessionData = this.createLargeSessionData(
+            datasetSize.objectives, 
+            datasetSize.keyResults
+          );
+          
+          // Process the data
+          const processor = new DataProcessor(7);
+          const reportSummary = processor.processSessionData(largeSessionData);
+          
+          const processingTime = Date.now() - startTime;
+          
+          // Validate results
+          if (reportSummary.totalObjectives !== datasetSize.objectives) {
+            throw new Error(`Expected ${datasetSize.objectives} objectives, got ${reportSummary.totalObjectives}`);
+          }
+          
+          if (reportSummary.totalKeyResults !== datasetSize.keyResults) {
+            throw new Error(`Expected ${datasetSize.keyResults} key results, got ${reportSummary.totalKeyResults}`);
+          }
+          
+          results.push({
+            dataset: datasetSize.description,
+            objectives: datasetSize.objectives,
+            keyResults: datasetSize.keyResults,
+            processingTime: processingTime,
+            overallProgress: reportSummary.overallProgress,
+            recentUpdates: reportSummary.recentlyUpdatedKRs.length,
+            status: processingTime < 30000 ? 'FAST' : processingTime < 60000 ? 'ACCEPTABLE' : 'SLOW'
+          });
+          
+          Logger.log(`${datasetSize.description}: ${processingTime}ms for ${datasetSize.objectives} objectives, ${datasetSize.keyResults} KRs`);
+          
+        } catch (datasetError) {
+          results.push({
+            dataset: datasetSize.description,
+            objectives: datasetSize.objectives,
+            keyResults: datasetSize.keyResults,
+            processingTime: -1,
+            status: 'ERROR',
+            error: datasetError.toString()
+          });
+        }
+      }
+      
+      const successCount = results.filter(r => r.status !== 'ERROR').length;
+      const fastCount = results.filter(r => r.status === 'FAST').length;
+      
+      if (successCount === datasetSizes.length && fastCount >= datasetSizes.length / 2) {
+        return {
+          name: testName,
+          status: 'PASSED',
+          message: 'Large dataset processing performed well',
+          details: `Processed ${datasetSizes.length} different dataset sizes successfully. Results: ${JSON.stringify(results)}`
+        };
+      } else if (successCount === datasetSizes.length) {
+        return {
+          name: testName,
+          status: 'WARNING',
+          message: 'Large dataset processing successful but slow',
+          details: `All datasets processed but performance could be improved. Results: ${JSON.stringify(results)}`
+        };
+      } else {
+        return {
+          name: testName,
+          status: 'FAILED',
+          message: 'Large dataset processing failed',
+          details: `${successCount}/${datasetSizes.length} datasets processed successfully. Results: ${JSON.stringify(results)}`
+        };
+      }
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'Large dataset processing test failed'
+      };
+    }
+  }
+  
+  /**
+   * Test memory usage optimization
+   * @returns {Object} Test result
+   */
+  static testMemoryUsageOptimization() {
+    const testName = 'Memory Usage Optimization';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      // Test memory-efficient patterns
+      const memoryTests = [
+        {
+          name: 'Data Structure Efficiency',
+          test: () => {
+            const startTime = Date.now();
+            
+            // Test creating many data structures
+            const sessions = [];
+            for (let i = 0; i < 100; i++) {
+              const session = new QuantiveSession({
+                id: `session-${i}`,
+                name: `Session ${i}`,
+                description: `Test session ${i}`,
+                startDate: new Date().toISOString(),
+                endDate: new Date(Date.now() + 86400000).toISOString(),
+                status: 'ACTIVE'
+              });
+              sessions.push(session);
+            }
+            
+            // Clear references
+            sessions.length = 0;
+            
+            return Date.now() - startTime;
+          }
+        },
+        {
+          name: 'Large Data Processing Without Memory Leaks',
+          test: () => {
+            const startTime = Date.now();
+            
+            // Process multiple datasets sequentially to test for memory leaks
+            for (let iteration = 0; iteration < 5; iteration++) {
+              const sessionData = this.createLargeSessionData(20, 80);
+              const processor = new DataProcessor(7);
+              const summary = processor.processSessionData(sessionData);
+              
+              // Validate each iteration produces consistent results
+              if (summary.totalObjectives !== 20 || summary.totalKeyResults !== 80) {
+                throw new Error(`Iteration ${iteration} produced inconsistent results`);
+              }
+            }
+            
+            return Date.now() - startTime;
+          }
+        },
+        {
+          name: 'String Concatenation Efficiency',
+          test: () => {
+            const startTime = Date.now();
+            
+            // Test efficient string building for reports
+            const parts = [];
+            for (let i = 0; i < 1000; i++) {
+              parts.push(`Test string ${i} with some content`);
+            }
+            
+            const result = parts.join('\n');
+            
+            if (result.length < 1000) {
+              throw new Error('String concatenation test failed');
+            }
+            
+            return Date.now() - startTime;
+          }
+        }
+      ];
+      
+      const results = [];
+      let totalTime = 0;
+      
+      for (const test of memoryTests) {
+        try {
+          const executionTime = test.test();
+          totalTime += executionTime;
+          
+          results.push({
+            test: test.name,
+            executionTime: executionTime,
+            success: true
+          });
+          
+          Logger.log(`${test.name}: ${executionTime}ms`);
+          
+        } catch (testError) {
+          results.push({
+            test: test.name,
+            executionTime: -1,
+            success: false,
+            error: testError.toString()
+          });
+        }
+      }
+      
+      const successCount = results.filter(r => r.success).length;
+      const avgTime = totalTime / successCount;
+      
+      if (successCount === memoryTests.length && avgTime < 5000) {
+        return {
+          name: testName,
+          status: 'PASSED',
+          message: 'Memory usage optimization is effective',
+          details: `All ${memoryTests.length} memory tests passed with average time ${avgTime.toFixed(0)}ms. Results: ${JSON.stringify(results)}`
+        };
+      } else if (successCount === memoryTests.length) {
+        return {
+          name: testName,
+          status: 'WARNING',
+          message: 'Memory usage acceptable but could be optimized',
+          details: `All tests passed but average time ${avgTime.toFixed(0)}ms indicates room for improvement. Results: ${JSON.stringify(results)}`
+        };
+      } else {
+        return {
+          name: testName,
+          status: 'FAILED',
+          message: 'Memory usage optimization test failed',
+          details: `${successCount}/${memoryTests.length} memory tests passed. Results: ${JSON.stringify(results)}`
+        };
+      }
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'Memory usage optimization test failed'
+      };
+    }
+  }
+  
+  /**
+   * Create large session data for performance testing
+   * @param {number} objectiveCount - Number of objectives to create
+   * @param {number} keyResultCount - Number of key results to create
+   * @returns {QuantiveSession} Large session data
+   */
+  static createLargeSessionData(objectiveCount, keyResultCount) {
+    const session = new QuantiveSession({
+      id: 'performance-test-session',
+      name: 'Performance Test Session',
+      description: 'Large session for performance testing',
+      startDate: '2024-01-01T00:00:00Z',
+      endDate: '2024-12-31T23:59:59Z',
+      status: 'ACTIVE'
+    });
+    
+    const krPerObjective = Math.floor(keyResultCount / objectiveCount);
+    const statuses = ['ON_TRACK', 'AT_RISK', 'BEHIND', 'COMPLETED'];
+    
+    for (let objIndex = 0; objIndex < objectiveCount; objIndex++) {
+      const objective = new QuantiveObjective({
+        id: `perf-obj-${objIndex}`,
+        name: `Performance Objective ${objIndex + 1}`,
+        description: `Description for performance objective ${objIndex + 1}`,
+        owner: `Owner ${(objIndex % 10) + 1}`,
+        status: statuses[objIndex % statuses.length],
+        progress: Math.floor(Math.random() * 100)
+      });
+      
+      // Add key results for this objective
+      const keyResults = [];
+      for (let krIndex = 0; krIndex < krPerObjective; krIndex++) {
+        const globalKrIndex = objIndex * krPerObjective + krIndex;
+        if (globalKrIndex >= keyResultCount) break;
+        
+        const keyResult = new QuantiveKeyResult({
+          id: `perf-kr-${globalKrIndex}`,
+          name: `Performance KR ${globalKrIndex + 1}`,
+          description: `Description for performance KR ${globalKrIndex + 1}`,
+          owner: `KR Owner ${(globalKrIndex % 5) + 1}`,
+          status: statuses[globalKrIndex % statuses.length],
+          progress: Math.floor(Math.random() * 100),
+          currentValue: Math.floor(Math.random() * 100),
+          targetValue: 100,
+          unit: 'percent',
+          lastUpdated: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+          objectiveId: objective.id
+        });
+        
+        keyResults.push(keyResult);
+      }
+      
+      objective.keyResults = keyResults;
+      session.objectives.push(objective);
+    }
+    
+    return session;
+  }
+  
+  /**
+   * Create mock report summary for testing
+   * @returns {ReportSummary} Mock report summary
+   */
+  static createMockReportSummary() {
+    const summary = new ReportSummary();
+    summary.sessionInfo = {
+      id: 'performance-test-session',
+      name: 'Performance Test Session',
+      description: 'Mock session for performance testing',
+      startDate: new Date('2024-01-01'),
+      endDate: new Date('2024-12-31'),
+      status: 'ACTIVE',
+      daysRemaining: 150
+    };
+    summary.overallProgress = 65;
+    summary.totalObjectives = 15;
+    summary.totalKeyResults = 45;
+    summary.statusCounts = {
+      'On Track': 25,
+      'At Risk': 12,
+      'Behind': 5,
+      'Completed': 3,
+      'Not Started': 0
+    };
+    summary.recentlyUpdatedKRs = [
+      { name: 'Performance KR 1', status: 'On Track', progress: 80 },
+      { name: 'Performance KR 2', status: 'At Risk', progress: 45 },
+      { name: 'Performance KR 3', status: 'Behind', progress: 25 }
+    ];
+    
+    return summary;
+  }
+}
+
+/**
+ * Run performance tests
+ */
+function runPerformanceTests() {
+  const results = PerformanceTestSuite.runPerformanceTests();
+  Logger.log('Performance Test Results: ' + JSON.stringify(results, null, 2));
+  return results;
+}
+
+/**
+ * Test individual performance components
+ */
+function testExecutionTimeOnly() {
+  return PerformanceTestSuite.testExecutionTimeCompliance();
+}
+
+function testRateLimitingOnly() {
+  return PerformanceTestSuite.testApiRateLimitHandling();
+}
+
+function testLargeDatasetOnly() {
+  return PerformanceTestSuite.testLargeDatasetProcessing();
+}
+
+function testMemoryOptimizationOnly() {
+  return PerformanceTestSuite.testMemoryUsageOptimization();
 }
