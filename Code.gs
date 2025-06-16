@@ -1680,6 +1680,401 @@ function testApiConnection() {
 }
 
 // ============================================================================
+// ERROR HANDLING & RESILIENCE SYSTEM
+// ============================================================================
+
+/**
+ * Enhanced Error Handler for comprehensive error management
+ */
+class ErrorHandler {
+  
+  /**
+   * Handle and classify errors with appropriate recovery strategies
+   * @param {Error} error - The error to handle
+   * @param {string} context - Context where the error occurred
+   * @param {Object} options - Options for error handling
+   * @returns {Object} Error handling result
+   */
+  static handleError(error, context, options = {}) {
+    const errorInfo = this.classifyError(error, context);
+    Logger.log(`ERROR_CLASSIFIED: ${errorInfo.type} in ${context} - ${error.toString()}`);
+    
+    // Determine if retry is appropriate
+    if (errorInfo.retryable && (options.retryCount || 0) < (options.maxRetries || 3)) {
+      const delay = this.calculateRetryDelay(options.retryCount || 0, errorInfo.type);
+      Logger.log(`ERROR_RETRY: Retrying in ${delay}ms (attempt ${(options.retryCount || 0) + 1})`);
+      return {
+        action: 'retry',
+        delay: delay,
+        retryCount: (options.retryCount || 0) + 1
+      };
+    }
+    
+    // Determine fallback action
+    const fallbackAction = this.determineFallbackAction(errorInfo, context, options);
+    Logger.log(`ERROR_FALLBACK: ${fallbackAction.action} - ${fallbackAction.reason}`);
+    
+    return fallbackAction;
+  }
+  
+  /**
+   * Classify error type and determine characteristics
+   * @param {Error} error - The error to classify
+   * @param {string} context - Context where the error occurred
+   * @returns {Object} Error classification
+   */
+  static classifyError(error, context) {
+    const errorMessage = error.toString().toLowerCase();
+    
+    // Network/connectivity errors
+    if (errorMessage.includes('network') || errorMessage.includes('timeout') || 
+        errorMessage.includes('connection') || errorMessage.includes('fetch')) {
+      return {
+        type: 'NETWORK_ERROR',
+        retryable: true,
+        severity: 'HIGH',
+        category: 'CONNECTIVITY'
+      };
+    }
+    
+    // Rate limiting
+    if (errorMessage.includes('rate limit') || errorMessage.includes('429')) {
+      return {
+        type: 'RATE_LIMIT',
+        retryable: true,
+        severity: 'MEDIUM',
+        category: 'API_LIMIT'
+      };
+    }
+    
+    // Authentication errors
+    if (errorMessage.includes('authentication') || errorMessage.includes('401') || 
+        errorMessage.includes('unauthorized')) {
+      return {
+        type: 'AUTH_ERROR',
+        retryable: false,
+        severity: 'HIGH',
+        category: 'CONFIGURATION'
+      };
+    }
+    
+    // Permission errors
+    if (errorMessage.includes('forbidden') || errorMessage.includes('403') || 
+        errorMessage.includes('permission')) {
+      return {
+        type: 'PERMISSION_ERROR',
+        retryable: false,
+        severity: 'HIGH',
+        category: 'CONFIGURATION'
+      };
+    }
+    
+    // Resource not found
+    if (errorMessage.includes('not found') || errorMessage.includes('404')) {
+      return {
+        type: 'RESOURCE_NOT_FOUND',
+        retryable: false,
+        severity: 'MEDIUM',
+        category: 'CONFIGURATION'
+      };
+    }
+    
+    // Server errors
+    if (errorMessage.includes('server error') || errorMessage.includes('5')) {
+      return {
+        type: 'SERVER_ERROR',
+        retryable: true,
+        severity: 'HIGH',
+        category: 'EXTERNAL'
+      };
+    }
+    
+    // Google Apps Script quota/execution time
+    if (errorMessage.includes('quota') || errorMessage.includes('execution time') || 
+        errorMessage.includes('script runtime')) {
+      return {
+        type: 'QUOTA_ERROR',
+        retryable: false,
+        severity: 'HIGH',
+        category: 'PLATFORM'
+      };
+    }
+    
+    // Parse/format errors
+    if (errorMessage.includes('parse') || errorMessage.includes('json') || 
+        errorMessage.includes('format')) {
+      return {
+        type: 'PARSE_ERROR',
+        retryable: false,
+        severity: 'MEDIUM',
+        category: 'DATA'
+      };
+    }
+    
+    // Default classification
+    return {
+      type: 'UNKNOWN_ERROR',
+      retryable: false,
+      severity: 'MEDIUM',
+      category: 'UNKNOWN'
+    };
+  }
+  
+  /**
+   * Calculate appropriate retry delay based on attempt and error type
+   * @param {number} retryCount - Current retry count
+   * @param {string} errorType - Type of error
+   * @returns {number} Delay in milliseconds
+   */
+  static calculateRetryDelay(retryCount, errorType) {
+    const baseDelay = CONFIG.RETRY_DELAY || 1000;
+    
+    // Special handling for rate limiting
+    if (errorType === 'RATE_LIMIT') {
+      return Math.min(baseDelay * Math.pow(3, retryCount), 300000); // Max 5 minutes
+    }
+    
+    // Exponential backoff for other retryable errors
+    return Math.min(baseDelay * Math.pow(2, retryCount), 60000); // Max 1 minute
+  }
+  
+  /**
+   * Determine fallback action based on error type and context
+   * @param {Object} errorInfo - Error classification info
+   * @param {string} context - Context where error occurred
+   * @param {Object} options - Options for fallback handling
+   * @returns {Object} Fallback action
+   */
+  static determineFallbackAction(errorInfo, context, options = {}) {
+    switch (errorInfo.category) {
+      case 'CONNECTIVITY':
+      case 'EXTERNAL':
+        return {
+          action: 'skip_and_notify',
+          reason: 'External service unavailable, will retry on next scheduled run',
+          notify: true
+        };
+        
+      case 'CONFIGURATION':
+        return {
+          action: 'halt_and_notify',
+          reason: 'Configuration error requires manual intervention',
+          notify: true,
+          requiresFixing: true
+        };
+        
+      case 'API_LIMIT':
+        return {
+          action: 'delay_and_reschedule',
+          reason: 'API rate limit reached, rescheduling for later',
+          delay: 3600000 // 1 hour
+        };
+        
+      case 'PLATFORM':
+        return {
+          action: 'partial_execution',
+          reason: 'Platform limits reached, attempting partial execution',
+          useReducedScope: true
+        };
+        
+      case 'DATA':
+        return {
+          action: 'skip_problematic_data',
+          reason: 'Data parsing error, continuing with available data',
+          continueWithPartial: true
+        };
+        
+      default:
+        return {
+          action: 'log_and_continue',
+          reason: 'Unknown error, logging for review',
+          notify: false
+        };
+    }
+  }
+  
+  /**
+   * Create fallback report when main report generation fails
+   * @param {Object} partialData - Any partial data that was collected
+   * @param {Array} errors - List of errors encountered
+   * @returns {Object} Fallback report info
+   */
+  static createFallbackReport(partialData = {}, errors = []) {
+    try {
+      Logger.log('Creating fallback report due to errors...');
+      
+      const fallbackTitle = `Quantive Report - Error Summary - ${DataTransformUtils.formatDate(new Date())}`;
+      const doc = DocumentApp.create(fallbackTitle);
+      const body = doc.getBody();
+      
+      // Add error report
+      body.appendParagraph('Quantive Report Generation Failed').setHeading(DocumentApp.ParagraphHeading.TITLE);
+      body.appendParagraph(`Generated: ${new Date().toLocaleString()}`).getChild(0).asText().setItalic(true);
+      body.appendHorizontalRule();
+      
+      body.appendParagraph('Errors Encountered:').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+      const errorList = body.appendList();
+      
+      for (const error of errors) {
+        errorList.appendListItem(`${error.context}: ${error.message}`);
+      }
+      
+      // Add any partial data that was collected
+      if (partialData && Object.keys(partialData).length > 0) {
+        body.appendParagraph('Partial Data Collected:').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+        body.appendParagraph(JSON.stringify(partialData, null, 2));
+      }
+      
+      body.appendParagraph('Next Steps:').setHeading(DocumentApp.ParagraphHeading.HEADING2);
+      const stepsList = body.appendList();
+      stepsList.appendListItem('Review configuration settings (API token, session ID)');
+      stepsList.appendListItem('Check Quantive API status and permissions');
+      stepsList.appendListItem('Verify Google Apps Script execution limits');
+      stepsList.appendListItem('Check execution logs for detailed error information');
+      
+      doc.saveAndClose();
+      const url = doc.getUrl();
+      
+      Logger.log(`Fallback report created: ${url}`);
+      return { fallbackReportUrl: url, docId: doc.getId() };
+      
+    } catch (fallbackError) {
+      Logger.log(`Failed to create fallback report: ${fallbackError.toString()}`);
+      return { fallbackReportUrl: null, error: fallbackError.toString() };
+    }
+  }
+  
+  /**
+   * Log comprehensive error details for debugging
+   * @param {Error} error - The error to log
+   * @param {string} context - Context information
+   * @param {Object} additionalInfo - Additional debugging information
+   */
+  static logDetailedError(error, context, additionalInfo = {}) {
+    const timestamp = new Date().toISOString();
+    const errorDetails = {
+      timestamp: timestamp,
+      context: context,
+      message: error.message || error.toString(),
+      stack: error.stack || 'No stack trace available',
+      type: error.name || 'Error',
+      additionalInfo: additionalInfo
+    };
+    
+    Logger.log(`DETAILED_ERROR: ${JSON.stringify(errorDetails, null, 2)}`);
+    
+    // Store in properties for persistent debugging
+    const errorKey = `ERROR_${Date.now()}`;
+    try {
+      ConfigManager.setProperty(errorKey, JSON.stringify(errorDetails));
+      
+      // Keep only last 10 errors to avoid property limit
+      this.cleanupOldErrors();
+    } catch (propertyError) {
+      Logger.log(`Failed to store error details: ${propertyError.toString()}`);
+    }
+  }
+  
+  /**
+   * Clean up old error entries from properties
+   */
+  static cleanupOldErrors() {
+    try {
+      const properties = PropertiesService.getScriptProperties();
+      const allProperties = properties.getProperties();
+      
+      const errorKeys = Object.keys(allProperties)
+        .filter(key => key.startsWith('ERROR_'))
+        .sort()
+        .reverse(); // Most recent first
+      
+      // Delete old errors, keep only last 10
+      if (errorKeys.length > 10) {
+        const keysToDelete = errorKeys.slice(10);
+        for (const key of keysToDelete) {
+          properties.deleteProperty(key);
+        }
+        Logger.log(`Cleaned up ${keysToDelete.length} old error entries`);
+      }
+    } catch (cleanupError) {
+      Logger.log(`Error cleanup failed: ${cleanupError.toString()}`);
+    }
+  }
+}
+
+/**
+ * Resilient execution wrapper for critical functions
+ */
+class ResilientExecutor {
+  
+  /**
+   * Execute function with comprehensive error handling and fallbacks
+   * @param {Function} fn - Function to execute
+   * @param {string} context - Execution context
+   * @param {Object} options - Execution options
+   * @returns {Object} Execution result
+   */
+  static executeWithFallbacks(fn, context, options = {}) {
+    const maxRetries = options.maxRetries || 3;
+    let retryCount = 0;
+    const errors = [];
+    
+    while (retryCount <= maxRetries) {
+      try {
+        Logger.log(`RESILIENT_EXEC: Attempting ${context} (attempt ${retryCount + 1}/${maxRetries + 1})`);
+        const result = fn();
+        
+        if (retryCount > 0) {
+          Logger.log(`RESILIENT_EXEC: ${context} succeeded after ${retryCount} retries`);
+        }
+        
+        return {
+          success: true,
+          result: result,
+          retryCount: retryCount,
+          errors: errors
+        };
+        
+      } catch (error) {
+        errors.push({
+          attempt: retryCount + 1,
+          error: error.toString(),
+          context: context,
+          timestamp: new Date().toISOString()
+        });
+        
+        ErrorHandler.logDetailedError(error, context, { 
+          attempt: retryCount + 1, 
+          maxRetries: maxRetries + 1 
+        });
+        
+        const handleResult = ErrorHandler.handleError(error, context, { 
+          retryCount: retryCount, 
+          maxRetries: maxRetries 
+        });
+        
+        if (handleResult.action === 'retry' && retryCount < maxRetries) {
+          retryCount = handleResult.retryCount;
+          Logger.log(`RESILIENT_EXEC: Waiting ${handleResult.delay}ms before retry...`);
+          Utilities.sleep(handleResult.delay);
+          continue;
+        } else {
+          // No more retries or not retryable
+          Logger.log(`RESILIENT_EXEC: ${context} failed after all attempts`);
+          return {
+            success: false,
+            error: error,
+            retryCount: retryCount,
+            errors: errors,
+            fallbackAction: handleResult
+          };
+        }
+      }
+    }
+  }
+}
+
+// ============================================================================
 // AUTOMATION HELPER FUNCTIONS
 // ============================================================================
 
