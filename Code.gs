@@ -126,7 +126,17 @@ const CONFIG = {
     'BEHIND': 'Behind',
     'COMPLETED': 'Completed',
     'NOT_STARTED': 'Not Started'
-  }
+  },
+  
+  // Data management constants
+  SHEET_MAX_ROWS: 100,
+  MAX_INSIGHTS: 3,
+  PROGRESS_BAR_LENGTH: 20,
+  
+  // URL patterns for validation
+  GOOGLE_DOC_URL_PATTERN: /\/d\/([a-zA-Z0-9-_]+)/,
+  API_TOKEN_PATTERN: /^[a-zA-Z0-9._-]+$/,
+  ACCOUNT_ID_PATTERN: /^[a-zA-Z0-9-]+$/
 };
 
 // ============================================================================
@@ -1441,7 +1451,7 @@ class GoogleSheetsReportGenerator {
    */
   prepareRowData(reportSummary, processor) {
     const insights = processor.generateInsights(reportSummary);
-    const keyInsights = insights.slice(0, 3).join(' | '); // Take first 3 insights
+    const keyInsights = insights.slice(0, CONFIG.MAX_INSIGHTS).join(' | '); // Take first few insights
     
     return [
       DataTransformUtils.formatDate(new Date()), // Report Date
@@ -1540,7 +1550,7 @@ class GoogleSheetsReportGenerator {
    * Archive old data (keep last N entries)
    * @param {number} maxRows - Maximum number of data rows to keep
    */
-  archiveOldData(maxRows = 100) {
+  archiveOldData(maxRows = CONFIG.SHEET_MAX_ROWS) {
     const totalRows = this.sheet.getLastRow();
     const dataRows = totalRows - 1; // Excluding header
     
@@ -3112,14 +3122,14 @@ class IntegrationTestSuite {
         testResults.docUrl = docsGenerator.generateReport(reportSummary, processor);
         
         // Clean up test document
-        setTimeout(() => {
-          try {
-            const docId = testResults.docUrl.split('/d/')[1].split('/')[0];
+        try {
+          const docId = this.extractGoogleDocId(testResults.docUrl);
+          if (docId) {
             DriveApp.getFileById(docId).setTrashed(true);
-          } catch (cleanupError) {
-            Logger.log(`Failed to cleanup test doc: ${cleanupError.toString()}`);
           }
-        }, 5000);
+        } catch (cleanupError) {
+          Logger.log(`Failed to cleanup test doc: ${cleanupError.toString()}`);
+        }
         
       } catch (docsError) {
         Logger.log(`Google Docs generation failed: ${docsError.toString()}`);
@@ -3131,14 +3141,14 @@ class IntegrationTestSuite {
         testResults.sheetUrl = sheetsGenerator.generateReport(reportSummary, processor);
         
         // Clean up test sheet
-        setTimeout(() => {
-          try {
-            const sheetId = testResults.sheetUrl.split('/d/')[1].split('/')[0];
+        try {
+          const sheetId = this.extractGoogleDocId(testResults.sheetUrl);
+          if (sheetId) {
             DriveApp.getFileById(sheetId).setTrashed(true);
-          } catch (cleanupError) {
-            Logger.log(`Failed to cleanup test sheet: ${cleanupError.toString()}`);
           }
-        }, 5000);
+        } catch (cleanupError) {
+          Logger.log(`Failed to cleanup test sheet: ${cleanupError.toString()}`);
+        }
         
       } catch (sheetsError) {
         Logger.log(`Google Sheets generation failed: ${sheetsError.toString()}`);
@@ -3519,6 +3529,22 @@ class IntegrationTestSuite {
     }
     
     return mockSession;
+  }
+  
+  /**
+   * Extract Google Doc/Sheet ID from URL safely
+   * @param {string} url - Google Doc or Sheet URL
+   * @returns {string|null} Extracted ID or null if parsing fails
+   */
+  static extractGoogleDocId(url) {
+    try {
+      if (!url) return null;
+      const match = url.match(CONFIG.GOOGLE_DOC_URL_PATTERN);
+      return match ? match[1] : null;
+    } catch (error) {
+      Logger.log(`Failed to extract doc ID from URL: ${url}`);
+      return null;
+    }
   }
 }
 
