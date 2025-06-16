@@ -1252,6 +1252,301 @@ class GoogleSheetsReportGenerator {
 }
 
 // ============================================================================
+// AUTOMATION & SCHEDULING ENGINE
+// ============================================================================
+
+/**
+ * Trigger Management System for automated report generation
+ */
+class TriggerManager {
+  
+  /**
+   * Set up a time-driven trigger for automated report generation
+   * @param {string} frequency - Frequency: 'daily', 'weekly', 'monthly'
+   * @param {number} hour - Hour of day (0-23)
+   * @param {number} dayOfWeek - Day of week for weekly (1=Monday, 7=Sunday)
+   * @param {number} dayOfMonth - Day of month for monthly (1-31)
+   * @returns {string} Trigger ID
+   */
+  static setupTimeDrivenTrigger(frequency = 'weekly', hour = 9, dayOfWeek = 1, dayOfMonth = 1) {
+    try {
+      Logger.log(`Setting up ${frequency} trigger at hour ${hour}`);
+      
+      // Delete existing triggers for this function first
+      this.deleteExistingTriggers('generateQuantiveReport');
+      
+      let trigger;
+      
+      switch (frequency.toLowerCase()) {
+        case 'daily':
+          trigger = ScriptApp.newTrigger('generateQuantiveReport')
+            .timeBased()
+            .everyDays(1)
+            .atHour(hour)
+            .create();
+          break;
+          
+        case 'weekly':
+          trigger = ScriptApp.newTrigger('generateQuantiveReport')
+            .timeBased()
+            .everyWeeks(1)
+            .onWeekDay(this.getWeekDay(dayOfWeek))
+            .atHour(hour)
+            .create();
+          break;
+          
+        case 'monthly':
+          trigger = ScriptApp.newTrigger('generateQuantiveReport')
+            .timeBased()
+            .onMonthDay(dayOfMonth)
+            .atHour(hour)
+            .create();
+          break;
+          
+        default:
+          throw new Error(`Invalid frequency: ${frequency}. Use 'daily', 'weekly', or 'monthly'`);
+      }
+      
+      const triggerId = trigger.getUniqueId();
+      Logger.log(`Trigger created successfully with ID: ${triggerId}`);
+      
+      // Store trigger info in properties
+      ConfigManager.setProperty('TRIGGER_ID', triggerId);
+      ConfigManager.setProperty('TRIGGER_FREQUENCY', frequency);
+      ConfigManager.setProperty('TRIGGER_HOUR', hour.toString());
+      
+      return triggerId;
+      
+    } catch (error) {
+      Logger.log(`Error setting up trigger: ${error.toString()}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Delete existing triggers for a specific function
+   * @param {string} functionName - Name of the function
+   */
+  static deleteExistingTriggers(functionName) {
+    const triggers = ScriptApp.getProjectTriggers();
+    let deletedCount = 0;
+    
+    for (const trigger of triggers) {
+      if (trigger.getHandlerFunction() === functionName) {
+        ScriptApp.deleteTrigger(trigger);
+        deletedCount++;
+      }
+    }
+    
+    if (deletedCount > 0) {
+      Logger.log(`Deleted ${deletedCount} existing triggers for ${functionName}`);
+    }
+  }
+  
+  /**
+   * Get all active triggers
+   * @returns {Array<Object>} Array of trigger information
+   */
+  static getActiveTriggers() {
+    const triggers = ScriptApp.getProjectTriggers();
+    
+    return triggers.map(trigger => ({
+      id: trigger.getUniqueId(),
+      function: trigger.getHandlerFunction(),
+      eventType: trigger.getEventType().toString(),
+      source: trigger.getTriggerSource().toString()
+    }));
+  }
+  
+  /**
+   * Delete a specific trigger by ID
+   * @param {string} triggerId - Trigger ID
+   * @returns {boolean} Success status
+   */
+  static deleteTrigger(triggerId) {
+    try {
+      const triggers = ScriptApp.getProjectTriggers();
+      
+      for (const trigger of triggers) {
+        if (trigger.getUniqueId() === triggerId) {
+          ScriptApp.deleteTrigger(trigger);
+          Logger.log(`Trigger ${triggerId} deleted successfully`);
+          
+          // Clean up properties
+          ConfigManager.setProperty('TRIGGER_ID', '');
+          
+          return true;
+        }
+      }
+      
+      Logger.log(`Trigger ${triggerId} not found`);
+      return false;
+      
+    } catch (error) {
+      Logger.log(`Error deleting trigger: ${error.toString()}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Convert day number to ScriptApp.WeekDay
+   * @param {number} dayNumber - Day number (1=Monday, 7=Sunday)
+   * @returns {ScriptApp.WeekDay} WeekDay enum
+   */
+  static getWeekDay(dayNumber) {
+    const weekDays = {
+      1: ScriptApp.WeekDay.MONDAY,
+      2: ScriptApp.WeekDay.TUESDAY,
+      3: ScriptApp.WeekDay.WEDNESDAY,
+      4: ScriptApp.WeekDay.THURSDAY,
+      5: ScriptApp.WeekDay.FRIDAY,
+      6: ScriptApp.WeekDay.SATURDAY,
+      7: ScriptApp.WeekDay.SUNDAY
+    };
+    
+    return weekDays[dayNumber] || ScriptApp.WeekDay.MONDAY;
+  }
+  
+  /**
+   * Get trigger status and next execution time
+   * @returns {Object} Trigger status information
+   */
+  static getTriggerStatus() {
+    const triggerId = ConfigManager.getProperty('TRIGGER_ID');
+    
+    if (!triggerId) {
+      return {
+        active: false,
+        message: 'No trigger configured'
+      };
+    }
+    
+    const triggers = ScriptApp.getProjectTriggers();
+    const activeTrigger = triggers.find(t => t.getUniqueId() === triggerId);
+    
+    if (!activeTrigger) {
+      return {
+        active: false,
+        message: 'Configured trigger not found (may have been deleted)'
+      };
+    }
+    
+    return {
+      active: true,
+      id: triggerId,
+      function: activeTrigger.getHandlerFunction(),
+      frequency: ConfigManager.getProperty('TRIGGER_FREQUENCY'),
+      hour: ConfigManager.getProperty('TRIGGER_HOUR'),
+      message: 'Trigger is active and scheduled'
+    };
+  }
+}
+
+/**
+ * Execution Logger for monitoring and debugging
+ */
+class ExecutionLogger {
+  
+  /**
+   * Log execution start
+   * @param {string} functionName - Name of the function being executed
+   * @returns {string} Execution ID
+   */
+  static logExecutionStart(functionName) {
+    const executionId = Utilities.getUuid();
+    const timestamp = new Date().toISOString();
+    
+    Logger.log(`EXECUTION_START: ${functionName} [${executionId}] at ${timestamp}`);
+    
+    // Store in properties for tracking
+    ConfigManager.setProperty('LAST_EXECUTION_ID', executionId);
+    ConfigManager.setProperty('LAST_EXECUTION_START', timestamp);
+    ConfigManager.setProperty('LAST_EXECUTION_FUNCTION', functionName);
+    
+    return executionId;
+  }
+  
+  /**
+   * Log execution success
+   * @param {string} executionId - Execution ID
+   * @param {Object} results - Results object
+   */
+  static logExecutionSuccess(executionId, results = {}) {
+    const timestamp = new Date().toISOString();
+    const duration = this.calculateExecutionDuration();
+    
+    Logger.log(`EXECUTION_SUCCESS: [${executionId}] completed in ${duration}ms at ${timestamp}`);
+    Logger.log(`EXECUTION_RESULTS: ${JSON.stringify(results)}`);
+    
+    // Update properties
+    ConfigManager.setProperty('LAST_EXECUTION_END', timestamp);
+    ConfigManager.setProperty('LAST_EXECUTION_STATUS', 'SUCCESS');
+    ConfigManager.setProperty('LAST_EXECUTION_DURATION', duration.toString());
+    
+    if (results.docUrl) {
+      ConfigManager.setProperty('LAST_GENERATED_DOC_URL', results.docUrl);
+    }
+    
+    if (results.sheetUrl) {
+      ConfigManager.setProperty('LAST_GENERATED_SHEET_URL', results.sheetUrl);
+    }
+  }
+  
+  /**
+   * Log execution failure
+   * @param {string} executionId - Execution ID
+   * @param {Error} error - Error object
+   */
+  static logExecutionFailure(executionId, error) {
+    const timestamp = new Date().toISOString();
+    const duration = this.calculateExecutionDuration();
+    
+    Logger.log(`EXECUTION_FAILURE: [${executionId}] failed after ${duration}ms at ${timestamp}`);
+    Logger.log(`EXECUTION_ERROR: ${error.toString()}`);
+    Logger.log(`EXECUTION_STACK: ${error.stack || 'No stack trace available'}`);
+    
+    // Update properties
+    ConfigManager.setProperty('LAST_EXECUTION_END', timestamp);
+    ConfigManager.setProperty('LAST_EXECUTION_STATUS', 'FAILURE');
+    ConfigManager.setProperty('LAST_EXECUTION_ERROR', error.toString());
+    ConfigManager.setProperty('LAST_EXECUTION_DURATION', duration.toString());
+  }
+  
+  /**
+   * Calculate execution duration
+   * @returns {number} Duration in milliseconds
+   */
+  static calculateExecutionDuration() {
+    const startTime = ConfigManager.getProperty('LAST_EXECUTION_START');
+    
+    if (!startTime) return 0;
+    
+    const start = new Date(startTime);
+    const end = new Date();
+    
+    return end.getTime() - start.getTime();
+  }
+  
+  /**
+   * Get execution history summary
+   * @returns {Object} Execution history
+   */
+  static getExecutionHistory() {
+    return {
+      lastExecutionId: ConfigManager.getProperty('LAST_EXECUTION_ID'),
+      lastFunction: ConfigManager.getProperty('LAST_EXECUTION_FUNCTION'),
+      lastStart: ConfigManager.getProperty('LAST_EXECUTION_START'),
+      lastEnd: ConfigManager.getProperty('LAST_EXECUTION_END'),
+      lastStatus: ConfigManager.getProperty('LAST_EXECUTION_STATUS'),
+      lastDuration: ConfigManager.getProperty('LAST_EXECUTION_DURATION'),
+      lastError: ConfigManager.getProperty('LAST_EXECUTION_ERROR'),
+      lastDocUrl: ConfigManager.getProperty('LAST_GENERATED_DOC_URL'),
+      lastSheetUrl: ConfigManager.getProperty('LAST_GENERATED_SHEET_URL')
+    };
+  }
+}
+
+// ============================================================================
 // MAIN ENTRY POINT
 // ============================================================================
 
@@ -1260,6 +1555,8 @@ class GoogleSheetsReportGenerator {
  * This is the function that should be called by triggers
  */
 function generateQuantiveReport() {
+  const executionId = ExecutionLogger.logExecutionStart('generateQuantiveReport');
+  
   try {
     Logger.log('Starting Quantive report generation...');
     
@@ -1283,11 +1580,14 @@ function generateQuantiveReport() {
     const reportSummary = processor.processSessionData(sessionData);
     Logger.log('Report summary generated successfully');
     
+    const results = {};
+    
     // Generate Google Docs report
     if (config.googleDocId || !config.googleSheetId) {
       const docsGenerator = new GoogleDocsReportGenerator(config.googleDocId);
       const docUrl = docsGenerator.generateReport(reportSummary, processor);
       Logger.log(`Google Docs report generated: ${docUrl}`);
+      results.docUrl = docUrl;
       
       // Update config with new doc ID if it was created
       if (!config.googleDocId) {
@@ -1301,6 +1601,7 @@ function generateQuantiveReport() {
       const sheetsGenerator = new GoogleSheetsReportGenerator(config.googleSheetId);
       const sheetUrl = sheetsGenerator.generateReport(reportSummary, processor);
       Logger.log(`Google Sheets report generated: ${sheetUrl}`);
+      results.sheetUrl = sheetUrl;
       
       // Update config with new sheet ID if it was created
       if (!config.googleSheetId) {
@@ -1313,9 +1614,13 @@ function generateQuantiveReport() {
     }
     
     Logger.log('Quantive report generation completed successfully');
+    ExecutionLogger.logExecutionSuccess(executionId, results);
+    
+    return results;
     
   } catch (error) {
     Logger.log('Error generating Quantive report: ' + error.toString());
+    ExecutionLogger.logExecutionFailure(executionId, error);
     throw error;
   }
 }
@@ -1372,4 +1677,66 @@ function testApiConnection() {
     Logger.log('API connection test failed: ' + error.toString());
     return false;
   }
+}
+
+// ============================================================================
+// AUTOMATION HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Set up weekly trigger (Monday at 9 AM)
+ */
+function setupWeeklyTrigger() {
+  return TriggerManager.setupTimeDrivenTrigger('weekly', 9, 1);
+}
+
+/**
+ * Set up daily trigger (9 AM)
+ */
+function setupDailyTrigger() {
+  return TriggerManager.setupTimeDrivenTrigger('daily', 9);
+}
+
+/**
+ * Set up monthly trigger (1st day at 9 AM)
+ */
+function setupMonthlyTrigger() {
+  return TriggerManager.setupTimeDrivenTrigger('monthly', 9, 1, 1);
+}
+
+/**
+ * Delete all triggers for this project
+ */
+function deleteAllTriggers() {
+  TriggerManager.deleteExistingTriggers('generateQuantiveReport');
+  Logger.log('All triggers deleted');
+}
+
+/**
+ * Get trigger status
+ */
+function getTriggerStatus() {
+  const status = TriggerManager.getTriggerStatus();
+  Logger.log('Trigger Status: ' + JSON.stringify(status, null, 2));
+  return status;
+}
+
+/**
+ * Get execution history
+ */
+function getExecutionHistory() {
+  const history = ExecutionLogger.getExecutionHistory();
+  Logger.log('Execution History: ' + JSON.stringify(history, null, 2));
+  return history;
+}
+
+/**
+ * Manual trigger setup with custom parameters
+ * @param {string} frequency - 'daily', 'weekly', or 'monthly'
+ * @param {number} hour - Hour of day (0-23)
+ * @param {number} dayOfWeek - Day of week for weekly (1=Monday, 7=Sunday)
+ * @param {number} dayOfMonth - Day of month for monthly (1-31)
+ */
+function setupCustomTrigger(frequency, hour, dayOfWeek, dayOfMonth) {
+  return TriggerManager.setupTimeDrivenTrigger(frequency, hour, dayOfWeek, dayOfMonth);
 }
