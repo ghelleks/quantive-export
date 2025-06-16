@@ -431,6 +431,271 @@ class QuantiveApiClient {
 }
 
 // ============================================================================
+// DATA PROCESSING & ANALYTICS ENGINE
+// ============================================================================
+
+/**
+ * Data Processing Engine for analyzing Quantive session data
+ */
+class DataProcessor {
+  
+  /**
+   * Constructor
+   * @param {number} lookbackDays - Number of days to look back for recent activity
+   */
+  constructor(lookbackDays = CONFIG.DEFAULT_LOOKBACK_DAYS) {
+    this.lookbackDays = lookbackDays;
+  }
+  
+  /**
+   * Process complete session data and generate report summary
+   * @param {QuantiveSession} sessionData - Complete session data
+   * @returns {ReportSummary} Processed report summary
+   */
+  processSessionData(sessionData) {
+    try {
+      Logger.log('Processing session data...');
+      
+      const summary = new ReportSummary();
+      summary.sessionInfo = this.extractSessionInfo(sessionData);
+      
+      // Collect all key results from all objectives
+      const allKeyResults = [];
+      for (const objective of sessionData.objectives) {
+        allKeyResults.push(...objective.keyResults);
+      }
+      
+      // Calculate metrics
+      summary.totalObjectives = sessionData.objectives.length;
+      summary.totalKeyResults = allKeyResults.length;
+      summary.overallProgress = this.calculateOverallProgress(allKeyResults);
+      summary.statusCounts = this.calculateStatusCounts(allKeyResults);
+      summary.recentlyUpdatedKRs = this.findRecentlyUpdatedKRs(allKeyResults);
+      
+      Logger.log(`Processing complete: ${summary.totalObjectives} objectives, ${summary.totalKeyResults} key results, ${summary.overallProgress.toFixed(1)}% progress`);
+      return summary;
+      
+    } catch (error) {
+      Logger.log(`Error processing session data: ${error.toString()}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Extract session information for the report
+   * @param {QuantiveSession} sessionData - Session data
+   * @returns {Object} Session info object
+   */
+  extractSessionInfo(sessionData) {
+    return {
+      id: sessionData.id,
+      name: sessionData.name,
+      description: sessionData.description,
+      startDate: sessionData.startDate,
+      endDate: sessionData.endDate,
+      status: sessionData.status,
+      daysRemaining: this.calculateDaysRemaining(sessionData.endDate)
+    };
+  }
+  
+  /**
+   * Calculate overall progress as weighted average of key result progress
+   * @param {Array<QuantiveKeyResult>} keyResults - Array of key results
+   * @returns {number} Overall progress percentage (0-100)
+   */
+  calculateOverallProgress(keyResults) {
+    if (keyResults.length === 0) return 0;
+    
+    const totalProgress = keyResults.reduce((sum, kr) => sum + (kr.progress || 0), 0);
+    return totalProgress / keyResults.length;
+  }
+  
+  /**
+   * Calculate status distribution counts
+   * @param {Array<QuantiveKeyResult>} keyResults - Array of key results
+   * @returns {Object} Status counts object
+   */
+  calculateStatusCounts(keyResults) {
+    const counts = {
+      'On Track': 0,
+      'At Risk': 0,
+      'Behind': 0,
+      'Completed': 0,
+      'Not Started': 0
+    };
+    
+    for (const kr of keyResults) {
+      const mappedStatus = CONFIG.STATUS_MAPPING[kr.status] || 'Not Started';
+      if (counts.hasOwnProperty(mappedStatus)) {
+        counts[mappedStatus]++;
+      }
+    }
+    
+    return counts;
+  }
+  
+  /**
+   * Find key results updated within the lookback period
+   * @param {Array<QuantiveKeyResult>} keyResults - Array of key results
+   * @returns {Array<Object>} Recently updated key results with metadata
+   */
+  findRecentlyUpdatedKRs(keyResults) {
+    const recentKRs = keyResults.filter(kr => kr.isRecentlyUpdated(this.lookbackDays));
+    
+    return recentKRs.map(kr => ({
+      id: kr.id,
+      name: kr.name,
+      owner: kr.owner,
+      status: CONFIG.STATUS_MAPPING[kr.status] || kr.status,
+      progress: kr.progress,
+      currentValue: kr.currentValue,
+      targetValue: kr.targetValue,
+      unit: kr.unit,
+      lastUpdated: kr.lastUpdated,
+      objectiveId: kr.objectiveId
+    }));
+  }
+  
+  /**
+   * Calculate days remaining until session end
+   * @param {Date} endDate - Session end date
+   * @returns {number} Days remaining (negative if past due)
+   */
+  calculateDaysRemaining(endDate) {
+    const today = new Date();
+    const timeDiff = endDate.getTime() - today.getTime();
+    return Math.ceil(timeDiff / (1000 * 3600 * 24));
+  }
+  
+  /**
+   * Generate insights based on the data
+   * @param {ReportSummary} summary - Report summary
+   * @returns {Array<string>} Array of insight strings
+   */
+  generateInsights(summary) {
+    const insights = [];
+    
+    // Progress insights
+    if (summary.overallProgress >= 80) {
+      insights.push('🎯 Excellent progress! Most key results are on track to completion.');
+    } else if (summary.overallProgress >= 60) {
+      insights.push('📈 Good progress overall, but some areas may need attention.');
+    } else if (summary.overallProgress >= 40) {
+      insights.push('⚠️ Progress is moderate. Consider reviewing struggling key results.');
+    } else {
+      insights.push('🚨 Progress is behind expectations. Immediate action recommended.');
+    }
+    
+    // Status distribution insights
+    const atRiskCount = summary.statusCounts['At Risk'];
+    const behindCount = summary.statusCounts['Behind'];
+    
+    if (atRiskCount > 0 || behindCount > 0) {
+      insights.push(`⚡ ${atRiskCount + behindCount} key results need immediate attention.`);
+    }
+    
+    // Recent activity insights
+    if (summary.recentlyUpdatedKRs.length === 0) {
+      insights.push(`📅 No recent updates in the last ${this.lookbackDays} days. Consider checking in with teams.`);
+    } else {
+      insights.push(`✅ ${summary.recentlyUpdatedKRs.length} key results updated recently - good engagement!`);
+    }
+    
+    // Timeline insights
+    if (summary.sessionInfo.daysRemaining < 0) {
+      insights.push('📆 Session end date has passed. Consider closing or extending the session.');
+    } else if (summary.sessionInfo.daysRemaining <= 7) {
+      insights.push(`⏰ Only ${summary.sessionInfo.daysRemaining} days remaining in this session.`);
+    }
+    
+    return insights;
+  }
+}
+
+/**
+ * Utility functions for data transformation
+ */
+class DataTransformUtils {
+  
+  /**
+   * Format progress as percentage string
+   * @param {number} progress - Progress value (0-100)
+   * @returns {string} Formatted percentage
+   */
+  static formatProgress(progress) {
+    return `${Math.round(progress || 0)}%`;
+  }
+  
+  /**
+   * Format date for display
+   * @param {Date} date - Date object
+   * @returns {string} Formatted date string
+   */
+  static formatDate(date) {
+    if (!date) return 'N/A';
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  }
+  
+  /**
+   * Format value with unit
+   * @param {number} value - Numeric value
+   * @param {string} unit - Unit string
+   * @returns {string} Formatted value with unit
+   */
+  static formatValueWithUnit(value, unit) {
+    if (value === null || value === undefined) return 'N/A';
+    const formattedValue = typeof value === 'number' ? value.toLocaleString() : value;
+    return unit ? `${formattedValue} ${unit}` : formattedValue.toString();
+  }
+  
+  /**
+   * Truncate text to specified length
+   * @param {string} text - Text to truncate
+   * @param {number} maxLength - Maximum length
+   * @returns {string} Truncated text
+   */
+  static truncateText(text, maxLength = 100) {
+    if (!text || text.length <= maxLength) return text || '';
+    return text.substring(0, maxLength - 3) + '...';
+  }
+  
+  /**
+   * Sort key results by priority (status, then progress)
+   * @param {Array<Object>} keyResults - Array of key results
+   * @returns {Array<Object>} Sorted key results
+   */
+  static sortKeyResultsByPriority(keyResults) {
+    const statusPriority = {
+      'Behind': 1,
+      'At Risk': 2,
+      'On Track': 3,
+      'Completed': 4,
+      'Not Started': 5
+    };
+    
+    return keyResults.sort((a, b) => {
+      const aPriority = statusPriority[a.status] || 999;
+      const bPriority = statusPriority[b.status] || 999;
+      
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority;
+      }
+      
+      // If same status, sort by progress (ascending for behind/at-risk, descending for others)
+      if (aPriority <= 2) {
+        return (a.progress || 0) - (b.progress || 0);
+      } else {
+        return (b.progress || 0) - (a.progress || 0);
+      }
+    });
+  }
+}
+
+// ============================================================================
 // MAIN ENTRY POINT
 // ============================================================================
 
@@ -453,8 +718,15 @@ function generateQuantiveReport() {
     apiClient.testConnection();
     Logger.log('API connectivity test passed');
     
-    // TODO: Fetch session data
-    // TODO: Generate report summary
+    // Fetch session data
+    const sessionData = apiClient.getCompleteSessionData(config.sessionId);
+    Logger.log('Session data fetched successfully');
+    
+    // Process data and generate summary
+    const processor = new DataProcessor(config.lookbackDays);
+    const reportSummary = processor.processSessionData(sessionData);
+    Logger.log('Report summary generated successfully');
+    
     // TODO: Output to Google Docs/Sheets
     
     Logger.log('Quantive report generation completed successfully');
