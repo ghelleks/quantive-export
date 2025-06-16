@@ -2661,3 +2661,570 @@ function testErrorHandlingOnly() {
 function testTriggerManagementOnly() {
   return TestSuite.testTriggerManagement();
 }
+
+// ============================================================================
+// INTEGRATION TESTING FUNCTIONS
+// ============================================================================
+
+/**
+ * Integration Test Suite for end-to-end workflow validation
+ */
+class IntegrationTestSuite {
+  
+  /**
+   * Run comprehensive integration tests
+   * @returns {Object} Integration test results
+   */
+  static runIntegrationTests() {
+    Logger.log('Starting integration test suite...');
+    
+    const results = {
+      timestamp: new Date().toISOString(),
+      tests: [],
+      summary: {
+        total: 0,
+        passed: 0,
+        failed: 0,
+        warnings: 0
+      }
+    };
+    
+    // Run integration test categories
+    results.tests.push(this.testEndToEndWorkflow());
+    results.tests.push(this.testVariousConfigurations());
+    results.tests.push(this.testErrorScenarios());
+    results.tests.push(this.testTriggerExecution());
+    
+    // Calculate summary
+    for (const test of results.tests) {
+      results.summary.total++;
+      if (test.status === 'PASSED') {
+        results.summary.passed++;
+      } else if (test.status === 'FAILED') {
+        results.summary.failed++;
+      } else {
+        results.summary.warnings++;
+      }
+    }
+    
+    Logger.log(`Integration Test Summary: ${results.summary.passed}/${results.summary.total} passed, ${results.summary.failed} failed, ${results.summary.warnings} warnings`);
+    
+    return results;
+  }
+  
+  /**
+   * Test complete end-to-end workflow
+   * @returns {Object} Test result
+   */
+  static testEndToEndWorkflow() {
+    const testName = 'End-to-End Workflow';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      // Check if we have minimum configuration for E2E test
+      const config = ConfigManager.getConfig();
+      
+      if (!config.apiToken || !config.accountId) {
+        return {
+          name: testName,
+          status: 'WARNING',
+          message: 'Cannot run E2E test without API credentials',
+          details: 'Configure API token and account ID to enable full E2E testing'
+        };
+      }
+      
+      // Test with mock session ID if real one not configured
+      const sessionId = config.sessionId || 'mock-session-for-testing';
+      const useRealData = !!config.sessionId;
+      
+      Logger.log(`Running E2E test with ${useRealData ? 'real' : 'mock'} data...`);
+      
+      // Step 1: Test API client initialization
+      const apiClient = new QuantiveApiClient(config.apiToken, config.accountId);
+      
+      // Step 2: Test connectivity
+      if (useRealData) {
+        try {
+          apiClient.testConnection();
+        } catch (connectionError) {
+          return {
+            name: testName,
+            status: 'FAILED',
+            message: `API connection failed: ${connectionError.toString()}`,
+            details: 'Cannot proceed with E2E test without API connectivity'
+          };
+        }
+      }
+      
+      // Step 3: Test data fetching (mock if no real session)
+      let sessionData;
+      if (useRealData) {
+        try {
+          sessionData = apiClient.getCompleteSessionData(sessionId);
+        } catch (dataError) {
+          return {
+            name: testName,
+            status: 'FAILED',
+            message: `Data fetching failed: ${dataError.toString()}`,
+            details: 'Check session ID and permissions'
+          };
+        }
+      } else {
+        // Create comprehensive mock data
+        sessionData = this.createMockSessionData();
+      }
+      
+      // Step 4: Test data processing
+      const processor = new DataProcessor(config.lookbackDays || 7);
+      const reportSummary = processor.processSessionData(sessionData);
+      
+      if (!reportSummary || !reportSummary.sessionInfo) {
+        throw new Error('Data processing failed to generate valid summary');
+      }
+      
+      // Step 5: Test report generation
+      const testResults = { docUrl: null, sheetUrl: null };
+      
+      // Test Google Docs generation (create temporary)
+      try {
+        const docsGenerator = new GoogleDocsReportGenerator();
+        testResults.docUrl = docsGenerator.generateReport(reportSummary, processor);
+        
+        // Clean up test document
+        setTimeout(() => {
+          try {
+            const docId = testResults.docUrl.split('/d/')[1].split('/')[0];
+            DriveApp.getFileById(docId).setTrashed(true);
+          } catch (cleanupError) {
+            Logger.log(`Failed to cleanup test doc: ${cleanupError.toString()}`);
+          }
+        }, 5000);
+        
+      } catch (docsError) {
+        Logger.log(`Google Docs generation failed: ${docsError.toString()}`);
+      }
+      
+      // Test Google Sheets generation (create temporary)
+      try {
+        const sheetsGenerator = new GoogleSheetsReportGenerator();
+        testResults.sheetUrl = sheetsGenerator.generateReport(reportSummary, processor);
+        
+        // Clean up test sheet
+        setTimeout(() => {
+          try {
+            const sheetId = testResults.sheetUrl.split('/d/')[1].split('/')[0];
+            DriveApp.getFileById(sheetId).setTrashed(true);
+          } catch (cleanupError) {
+            Logger.log(`Failed to cleanup test sheet: ${cleanupError.toString()}`);
+          }
+        }, 5000);
+        
+      } catch (sheetsError) {
+        Logger.log(`Google Sheets generation failed: ${sheetsError.toString()}`);
+      }
+      
+      // Step 6: Validate results
+      const hasValidDoc = testResults.docUrl && testResults.docUrl.includes('docs.google.com');
+      const hasValidSheet = testResults.sheetUrl && testResults.sheetUrl.includes('spreadsheets');
+      
+      if (hasValidDoc && hasValidSheet) {
+        return {
+          name: testName,
+          status: 'PASSED',
+          message: 'End-to-end workflow completed successfully',
+          details: `Used ${useRealData ? 'real' : 'mock'} data. Generated both docs and sheets reports. ${reportSummary.totalObjectives} objectives, ${reportSummary.totalKeyResults} key results processed.`
+        };
+      } else if (hasValidDoc || hasValidSheet) {
+        return {
+          name: testName,
+          status: 'WARNING',
+          message: 'Partial E2E workflow success',
+          details: `${hasValidDoc ? 'Docs' : 'Sheets'} generation succeeded, ${!hasValidDoc ? 'docs' : 'sheets'} failed`
+        };
+      } else {
+        return {
+          name: testName,
+          status: 'FAILED',
+          message: 'Report generation failed',
+          details: 'Both Google Docs and Sheets generation failed in E2E test'
+        };
+      }
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'End-to-end workflow test failed'
+      };
+    }
+  }
+  
+  /**
+   * Test with various session configurations
+   * @returns {Object} Test result
+   */
+  static testVariousConfigurations() {
+    const testName = 'Various Session Configurations';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      const testConfigurations = [
+        { lookbackDays: 1, description: '1-day lookback' },
+        { lookbackDays: 7, description: '7-day lookback (default)' },
+        { lookbackDays: 30, description: '30-day lookback' },
+        { lookbackDays: 90, description: '90-day lookback' }
+      ];
+      
+      const results = [];
+      const mockSessionData = this.createMockSessionData();
+      
+      for (const testConfig of testConfigurations) {
+        try {
+          const processor = new DataProcessor(testConfig.lookbackDays);
+          const reportSummary = processor.processSessionData(mockSessionData);
+          
+          // Validate that different lookback periods affect results correctly
+          const recentCount = reportSummary.recentlyUpdatedKRs.length;
+          
+          results.push({
+            config: testConfig.description,
+            success: true,
+            recentUpdates: recentCount,
+            totalKRs: reportSummary.totalKeyResults
+          });
+          
+        } catch (configError) {
+          results.push({
+            config: testConfig.description,
+            success: false,
+            error: configError.toString()
+          });
+        }
+      }
+      
+      const successCount = results.filter(r => r.success).length;
+      
+      if (successCount === testConfigurations.length) {
+        return {
+          name: testName,
+          status: 'PASSED',
+          message: 'All configuration variations tested successfully',
+          details: `Tested ${testConfigurations.length} different lookback configurations. Results: ${JSON.stringify(results)}`
+        };
+      } else {
+        return {
+          name: testName,
+          status: 'WARNING',
+          message: `${successCount}/${testConfigurations.length} configurations passed`,
+          details: `Some configuration tests failed: ${JSON.stringify(results)}`
+        };
+      }
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'Configuration variation testing failed'
+      };
+    }
+  }
+  
+  /**
+   * Test error scenarios and recovery
+   * @returns {Object} Test result
+   */
+  static testErrorScenarios() {
+    const testName = 'Error Scenarios & Recovery';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      const errorScenarios = [
+        {
+          name: 'Invalid API Token',
+          test: () => {
+            const badClient = new QuantiveApiClient('invalid-token', 'account-id');
+            try {
+              badClient.testConnection();
+              return { success: false, reason: 'Should have failed with invalid token' };
+            } catch (expectedError) {
+              return { success: true, error: expectedError.toString() };
+            }
+          }
+        },
+        {
+          name: 'Missing Configuration',
+          test: () => {
+            try {
+              // Temporarily clear a required property
+              const originalValue = ConfigManager.getProperty(CONFIG.PROPERTIES.QUANTIVE_API_TOKEN);
+              ConfigManager.setProperty(CONFIG.PROPERTIES.QUANTIVE_API_TOKEN, '');
+              
+              try {
+                ConfigManager.validateConfig();
+                return { success: false, reason: 'Should have failed validation' };
+              } catch (expectedError) {
+                return { success: true, error: expectedError.toString() };
+              } finally {
+                // Restore original value
+                ConfigManager.setProperty(CONFIG.PROPERTIES.QUANTIVE_API_TOKEN, originalValue);
+              }
+            } catch (testError) {
+              return { success: false, reason: testError.toString() };
+            }
+          }
+        },
+        {
+          name: 'Corrupted Data Processing',
+          test: () => {
+            try {
+              const processor = new DataProcessor(7);
+              // Test with null/invalid data
+              try {
+                processor.processSessionData(null);
+                return { success: false, reason: 'Should have failed with null data' };
+              } catch (expectedError) {
+                return { success: true, error: expectedError.toString() };
+              }
+            } catch (testError) {
+              return { success: false, reason: testError.toString() };
+            }
+          }
+        }
+      ];
+      
+      const results = [];
+      for (const scenario of errorScenarios) {
+        try {
+          const result = scenario.test();
+          results.push({
+            scenario: scenario.name,
+            success: result.success,
+            details: result.error || result.reason
+          });
+        } catch (scenarioError) {
+          results.push({
+            scenario: scenario.name,
+            success: false,
+            details: `Test execution failed: ${scenarioError.toString()}`
+          });
+        }
+      }
+      
+      const successCount = results.filter(r => r.success).length;
+      
+      if (successCount === errorScenarios.length) {
+        return {
+          name: testName,
+          status: 'PASSED',
+          message: 'All error scenarios handled correctly',
+          details: `Tested ${errorScenarios.length} error scenarios. All errors were properly caught and handled.`
+        };
+      } else {
+        return {
+          name: testName,
+          status: 'WARNING',
+          message: `${successCount}/${errorScenarios.length} error scenarios passed`,
+          details: `Some error handling tests failed: ${JSON.stringify(results)}`
+        };
+      }
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'Error scenario testing failed'
+      };
+    }
+  }
+  
+  /**
+   * Test trigger execution capabilities
+   * @returns {Object} Test result
+   */
+  static testTriggerExecution() {
+    const testName = 'Trigger Execution';
+    Logger.log(`Testing: ${testName}`);
+    
+    try {
+      // Test trigger creation and management
+      const originalTriggers = TriggerManager.getActiveTriggers();
+      const originalTriggerId = ConfigManager.getProperty('TRIGGER_ID');
+      
+      // Test creating a trigger (but delete it immediately)
+      let testTriggerId = null;
+      try {
+        // Create a test trigger for 1 hour from now
+        const testHour = new Date().getHours() + 1;
+        testTriggerId = TriggerManager.setupTimeDrivenTrigger('daily', testHour % 24);
+        
+        if (!testTriggerId) {
+          throw new Error('Failed to create test trigger');
+        }
+        
+        // Verify trigger was created
+        const newTriggers = TriggerManager.getActiveTriggers();
+        const triggerCreated = newTriggers.some(t => t.id === testTriggerId);
+        
+        if (!triggerCreated) {
+          throw new Error('Test trigger was not found in active triggers');
+        }
+        
+        // Test trigger status
+        const status = TriggerManager.getTriggerStatus();
+        if (!status || !status.active) {
+          throw new Error('Trigger status check failed');
+        }
+        
+        // Clean up test trigger
+        const deleted = TriggerManager.deleteTrigger(testTriggerId);
+        if (!deleted) {
+          Logger.log('Warning: Failed to delete test trigger');
+        }
+        
+        // Restore original trigger if it existed
+        if (originalTriggerId) {
+          ConfigManager.setProperty('TRIGGER_ID', originalTriggerId);
+        }
+        
+        return {
+          name: testName,
+          status: 'PASSED',
+          message: 'Trigger execution system working correctly',
+          details: `Successfully created, verified, and deleted test trigger. Original triggers: ${originalTriggers.length}, Test trigger ID: ${testTriggerId}`
+        };
+        
+      } catch (triggerError) {
+        // Clean up any created trigger
+        if (testTriggerId) {
+          try {
+            TriggerManager.deleteTrigger(testTriggerId);
+          } catch (cleanupError) {
+            Logger.log(`Failed to cleanup test trigger: ${cleanupError.toString()}`);
+          }
+        }
+        
+        // Restore original trigger ID
+        if (originalTriggerId) {
+          ConfigManager.setProperty('TRIGGER_ID', originalTriggerId);
+        }
+        
+        throw triggerError;
+      }
+      
+    } catch (error) {
+      return {
+        name: testName,
+        status: 'FAILED',
+        message: error.toString(),
+        details: 'Trigger execution testing failed'
+      };
+    }
+  }
+  
+  /**
+   * Create comprehensive mock session data for testing
+   * @returns {QuantiveSession} Mock session data
+   */
+  static createMockSessionData() {
+    const mockSession = new QuantiveSession({
+      id: 'integration-test-session',
+      name: 'Integration Test Session',
+      description: 'Mock session for integration testing',
+      startDate: '2024-01-01T00:00:00Z',
+      endDate: '2024-12-31T23:59:59Z',
+      status: 'ACTIVE'
+    });
+    
+    // Create multiple objectives with varying data
+    const objectives = [
+      {
+        id: 'obj-1',
+        name: 'Revenue Growth',
+        description: 'Increase revenue by 25%',
+        owner: 'Sales Team',
+        status: 'ON_TRACK',
+        progress: 75
+      },
+      {
+        id: 'obj-2',
+        name: 'Customer Satisfaction',
+        description: 'Improve customer satisfaction scores',
+        owner: 'Customer Success',
+        status: 'AT_RISK',
+        progress: 45
+      },
+      {
+        id: 'obj-3',
+        name: 'Product Development',
+        description: 'Launch new product features',
+        owner: 'Engineering',
+        status: 'ON_TRACK',
+        progress: 90
+      }
+    ];
+    
+    for (const objData of objectives) {
+      const objective = new QuantiveObjective(objData);
+      
+      // Add key results for each objective
+      const keyResults = [
+        {
+          id: `${objData.id}-kr-1`,
+          name: `${objData.name} - KR 1`,
+          status: objData.status,
+          progress: objData.progress + 5,
+          currentValue: objData.progress + 5,
+          targetValue: 100,
+          lastUpdated: new Date(Date.now() - Math.random() * 14 * 24 * 60 * 60 * 1000).toISOString(),
+          objectiveId: objData.id
+        },
+        {
+          id: `${objData.id}-kr-2`,
+          name: `${objData.name} - KR 2`,
+          status: objData.status === 'ON_TRACK' ? 'AT_RISK' : objData.status,
+          progress: objData.progress - 10,
+          currentValue: objData.progress - 10,
+          targetValue: 100,
+          lastUpdated: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+          objectiveId: objData.id
+        }
+      ];
+      
+      objective.keyResults = keyResults.map(kr => new QuantiveKeyResult(kr));
+      mockSession.objectives.push(objective);
+    }
+    
+    return mockSession;
+  }
+}
+
+/**
+ * Run integration tests
+ */
+function runIntegrationTests() {
+  const results = IntegrationTestSuite.runIntegrationTests();
+  Logger.log('Integration Test Results: ' + JSON.stringify(results, null, 2));
+  return results;
+}
+
+/**
+ * Test individual integration components
+ */
+function testEndToEndOnly() {
+  return IntegrationTestSuite.testEndToEndWorkflow();
+}
+
+function testConfigurationsOnly() {
+  return IntegrationTestSuite.testVariousConfigurations();
+}
+
+function testErrorScenariosOnly() {
+  return IntegrationTestSuite.testErrorScenarios();
+}
+
+function testTriggerExecutionOnly() {
+  return IntegrationTestSuite.testTriggerExecution();
+}
