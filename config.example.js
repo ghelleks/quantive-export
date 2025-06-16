@@ -19,6 +19,10 @@ const CONFIG_TEMPLATE = {
   QUANTIVE_ACCOUNT_ID: 'your-account-id-here',
   
   // Session Configuration
+  // The UUID of the Quantive OKR session you want to analyze and report on
+  // Example: '12345678-abcd-1234-efgh-123456789012'
+  // Find this in your Quantive session URL or session settings page
+  // This determines which session's objectives and key results will be included in reports
   SESSION_ID: 'your-session-uuid-here',
   
   // Google Services Configuration (Optional)
@@ -82,7 +86,8 @@ TO SET UP YOUR CONFIGURATION:
    Property Value: [Your actual account ID]
    
    Property Name: SESSION_ID
-   Property Value: [Your target session UUID]
+   Property Value: [Your target session UUID - the specific OKR session to analyze]
+   How to find: Go to your Quantive session and copy the UUID from the URL or settings
    
    Property Name: GOOGLE_DOC_ID (optional)
    Property Value: [Your Google Doc ID if exporting to Docs]

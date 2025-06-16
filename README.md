@@ -38,7 +38,11 @@ Transform your Quantive (formerly Gtmhub) data into beautiful, automated reports
 ### 1. **Get Your Credentials**
 - 🔑 **Quantive API Token**: Go to Quantive Settings → Integrations → Generate API Token
 - 🏢 **Account ID**: Found in your Quantive URL or account settings
-- 📋 **Session ID**: Copy from the Quantive session you want to report on
+- 📋 **Session ID**: The unique identifier of the OKR session you want to analyze
+  - **What it is**: A UUID that identifies a specific OKR session (quarter, cycle, or planning period) in Quantive
+  - **Where to find it**: In your Quantive session URL (e.g., `quantive.com/sessions/12345678-abcd-1234-efgh-123456789012`) or session settings page
+  - **Format**: UUID like `12345678-abcd-1234-efgh-123456789012`
+  - **Purpose**: Tells the script which session's objectives and key results to include in your reports
 
 ### 2. **Set Up Google Apps Script**
 - 🌐 Visit [script.google.com](https://script.google.com)
@@ -249,7 +253,39 @@ We've made this as easy as possible to set up and maintain:
 | 📝 **"Can't write to document"** | Verify Google Doc/Sheet ID and permissions | |
 | ⚠️ **"Placeholder values detected"** | Replace 'your-api-token-here' with real credentials | ✅ NEW: Placeholder detection |
 | 🔧 **"Configuration validation failed"** | Use `importConfiguration()` for automatic validation | ✅ NEW: Import validation |
+| ⚠️ **"Where do I find my session ID?"** | See detailed guide below | ✅ NEW: Enhanced documentation |
 | ⏱️ **"Execution timeout"** | Check environment-specific rate limiting settings | ✅ NEW: Environment tuning |
+
+### 🔍 **Finding Your Session ID: Step-by-Step Guide**
+
+**Session ID is the most commonly asked question!** Here's exactly how to find it:
+
+#### Method 1: From the URL (Easiest)
+1. **Log into Quantive** and navigate to your target OKR session
+2. **Look at the browser URL** - it will look like:
+   ```
+   https://app.quantive.com/sessions/12345678-abcd-1234-efgh-123456789012
+   ```
+3. **Copy the UUID** (the long string after `/sessions/`)
+4. **That's your session ID!** Format: `12345678-abcd-1234-efgh-123456789012`
+
+#### Method 2: From Session Settings
+1. **Go to your session** in Quantive
+2. **Click on session settings** or session details
+3. **Look for "Session ID" or "ID"** field
+4. **Copy the UUID value**
+
+#### Method 3: From the Session List
+1. **Go to Sessions page** in Quantive navigation
+2. **Find your target session** in the list
+3. **Right-click and inspect** or look for an ID field
+4. **Copy the UUID**
+
+**⚠️ Important Notes:**
+- Session ID must be a **valid UUID format**: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
+- Each session has a **unique ID** - make sure you're targeting the right one
+- The session must be **accessible to your API token** (same account/permissions)
+- If unsure, test with `testConfiguration()` after setup
 
 ### 🎯 **Best Practices (Enhanced in v2.0)**
 

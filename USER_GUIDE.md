@@ -42,7 +42,15 @@ Before setting up the script, ensure you have:
 - ✅ Basic familiarity with Google Apps Script interface
 
 ### Technical Requirements
-- ✅ Target Quantive Session ID to analyze
+- ✅ **Target Quantive Session ID to analyze**
+  - **What it is**: A unique UUID that identifies a specific OKR session (quarter, cycle, planning period) in Quantive
+  - **Format**: UUID like `12345678-abcd-1234-efgh-123456789012`
+  - **How to find it**: 
+    1. Log into your Quantive account
+    2. Navigate to the OKR session you want to analyze
+    3. Look at the URL - the session ID is the UUID after `/sessions/`
+    4. Example: `https://app.quantive.com/sessions/12345678-abcd-1234-efgh-123456789012`
+    5. Alternatively, go to the session's settings/details page to copy the ID
 - ✅ Google Doc ID (for formatted reports) OR Google Sheet ID (for data tracking)
 - ✅ Internet connectivity for API calls
 
@@ -102,7 +110,11 @@ The script now includes enhanced configuration management with environment suppo
    Value: [Your actual account ID]
    
    Property Name: SESSION_ID
-   Value: [Your target session UUID]
+   Value: [Your target session UUID - the specific OKR session to analyze]
+   Example: 12345678-abcd-1234-efgh-123456789012
+   
+   ⚠️ IMPORTANT: This must be the UUID from your Quantive session URL or settings page.
+   The script will analyze ONLY the objectives and key results from this session.
    
    Property Name: ENVIRONMENT
    Value: development|staging|production
@@ -309,9 +321,14 @@ importConfiguration(newConfig);
 **Problem**: `404 Not Found` when fetching session data
 
 **Solutions**:
-1. ✅ Verify the Session ID is correct (check Quantive URL)
+1. ✅ **Verify the Session ID is correct**:
+   - Go to your Quantive session in a web browser
+   - Copy the UUID from the URL: `https://app.quantive.com/sessions/[UUID HERE]`
+   - Make sure it matches exactly what you configured in SESSION_ID property
+   - Ensure it's a valid UUID format: `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`
 2. ✅ Confirm you have access to view the session in Quantive
 3. ✅ Check if the session has been archived or deleted
+4. ✅ Verify the session contains objectives and key results to analyze
 
 #### Google Services Errors
 
