@@ -696,6 +696,320 @@ class DataTransformUtils {
 }
 
 // ============================================================================
+// REPORT GENERATION ENGINE
+// ============================================================================
+
+/**
+ * Google Docs Report Generator for Quantive session summaries
+ */
+class GoogleDocsReportGenerator {
+  
+  /**
+   * Constructor
+   * @param {string} docId - Google Doc ID (optional, will create new if not provided)
+   */
+  constructor(docId = null) {
+    this.docId = docId;
+    this.doc = null;
+    this.body = null;
+  }
+  
+  /**
+   * Generate a complete report in Google Docs
+   * @param {ReportSummary} reportSummary - Report summary data
+   * @param {DataProcessor} processor - Data processor for insights
+   * @returns {string} Document URL
+   */
+  generateReport(reportSummary, processor) {
+    try {
+      Logger.log('Generating Google Docs report...');
+      
+      // Create or open document
+      this.initializeDocument(reportSummary);
+      
+      // Clear existing content
+      this.body.clear();
+      
+      // Add report sections
+      this.addHeader(reportSummary);
+      this.addExecutiveSummary(reportSummary, processor);
+      this.addSessionOverview(reportSummary);
+      this.addProgressSummary(reportSummary);
+      this.addRecentActivity(reportSummary);
+      this.addInsights(reportSummary, processor);
+      this.addFooter(reportSummary);
+      
+      // Save and return URL
+      this.doc.saveAndClose();
+      const url = this.doc.getUrl();
+      Logger.log(`Google Docs report generated: ${url}`);
+      
+      return url;
+      
+    } catch (error) {
+      Logger.log(`Error generating Google Docs report: ${error.toString()}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Initialize document (create new or open existing)
+   * @param {ReportSummary} reportSummary - Report summary for title
+   */
+  initializeDocument(reportSummary) {
+    const title = `Quantive Session Report - ${reportSummary.sessionInfo.name} - ${DataTransformUtils.formatDate(reportSummary.generatedAt)}`;
+    
+    if (this.docId) {
+      try {
+        this.doc = DocumentApp.openById(this.docId);
+        this.doc.setName(title);
+        Logger.log('Opened existing document');
+      } catch (error) {
+        Logger.log('Could not open existing document, creating new one');
+        this.doc = DocumentApp.create(title);
+        this.docId = this.doc.getId();
+      }
+    } else {
+      this.doc = DocumentApp.create(title);
+      this.docId = this.doc.getId();
+      Logger.log('Created new document');
+    }
+    
+    this.body = this.doc.getBody();
+  }
+  
+  /**
+   * Add document header
+   * @param {ReportSummary} reportSummary - Report summary data
+   */
+  addHeader(reportSummary) {
+    // Main title
+    const title = this.body.appendParagraph(`Quantive Session Report`);
+    title.setHeading(DocumentApp.ParagraphHeading.TITLE);
+    title.getChild(0).asText().setBold(true);
+    
+    // Session name
+    const sessionTitle = this.body.appendParagraph(reportSummary.sessionInfo.name);
+    sessionTitle.setHeading(DocumentApp.ParagraphHeading.HEADING1);
+    
+    // Generation info
+    const genInfo = this.body.appendParagraph(`Generated on ${DataTransformUtils.formatDate(reportSummary.generatedAt)}`);
+    genInfo.getChild(0).asText().setItalic(true);
+    
+    this.body.appendHorizontalRule();
+  }
+  
+  /**
+   * Add executive summary section
+   * @param {ReportSummary} reportSummary - Report summary data
+   * @param {DataProcessor} processor - Data processor for insights
+   */
+  addExecutiveSummary(reportSummary, processor) {
+    const heading = this.body.appendParagraph('Executive Summary');
+    heading.setHeading(DocumentApp.ParagraphHeading.HEADING2);
+    
+    // Key metrics
+    const metrics = [
+      `📊 Overall Progress: ${DataTransformUtils.formatProgress(reportSummary.overallProgress)}`,
+      `🎯 Total Objectives: ${reportSummary.totalObjectives}`,
+      `📈 Total Key Results: ${reportSummary.totalKeyResults}`,
+      `🕒 Days Remaining: ${reportSummary.sessionInfo.daysRemaining > 0 ? reportSummary.sessionInfo.daysRemaining : 'Overdue'}`
+    ];
+    
+    for (const metric of metrics) {
+      this.body.appendParagraph(metric).setIndentStart(20);
+    }
+    
+    // Status breakdown
+    this.body.appendParagraph('').appendText('Status Breakdown:').setBold(true);
+    const statusList = this.body.appendList();
+    
+    for (const [status, count] of Object.entries(reportSummary.statusCounts)) {
+      if (count > 0) {
+        const statusEmoji = this.getStatusEmoji(status);
+        statusList.appendListItem(`${statusEmoji} ${status}: ${count} key results`);
+      }
+    }
+    
+    this.body.appendParagraph(''); // Spacing
+  }
+  
+  /**
+   * Add session overview section
+   * @param {ReportSummary} reportSummary - Report summary data
+   */
+  addSessionOverview(reportSummary) {
+    const heading = this.body.appendParagraph('Session Overview');
+    heading.setHeading(DocumentApp.ParagraphHeading.HEADING2);
+    
+    const info = reportSummary.sessionInfo;
+    
+    const details = [
+      ['Session ID', info.id],
+      ['Description', DataTransformUtils.truncateText(info.description, 200) || 'N/A'],
+      ['Start Date', DataTransformUtils.formatDate(info.startDate)],
+      ['End Date', DataTransformUtils.formatDate(info.endDate)],
+      ['Status', info.status || 'N/A']
+    ];
+    
+    // Create a simple table-like format
+    for (const [label, value] of details) {
+      const para = this.body.appendParagraph('');
+      para.appendText(`${label}: `).setBold(true);
+      para.appendText(value);
+    }
+    
+    this.body.appendParagraph(''); // Spacing
+  }
+  
+  /**
+   * Add progress summary section
+   * @param {ReportSummary} reportSummary - Report summary data
+   */
+  addProgressSummary(reportSummary) {
+    const heading = this.body.appendParagraph('Progress Summary');
+    heading.setHeading(DocumentApp.ParagraphHeading.HEADING2);
+    
+    // Progress bar visualization (text-based)
+    const progressBar = this.createTextProgressBar(reportSummary.overallProgress);
+    const progressPara = this.body.appendParagraph(`Overall Progress: ${progressBar} ${DataTransformUtils.formatProgress(reportSummary.overallProgress)}`);
+    progressPara.getChild(0).asText().setFontFamily('Courier New');
+    
+    // Detailed status counts
+    this.body.appendParagraph('Key Results by Status:').getChild(0).asText().setBold(true);
+    
+    const statusList = this.body.appendList();
+    const sortedStatuses = Object.entries(reportSummary.statusCounts)
+      .sort(([,a], [,b]) => b - a); // Sort by count descending
+    
+    for (const [status, count] of sortedStatuses) {
+      const emoji = this.getStatusEmoji(status);
+      const percentage = reportSummary.totalKeyResults > 0 
+        ? Math.round((count / reportSummary.totalKeyResults) * 100) 
+        : 0;
+      statusList.appendListItem(`${emoji} ${status}: ${count} (${percentage}%)`);
+    }
+    
+    this.body.appendParagraph(''); // Spacing
+  }
+  
+  /**
+   * Add recent activity section
+   * @param {ReportSummary} reportSummary - Report summary data
+   */
+  addRecentActivity(reportSummary) {
+    const heading = this.body.appendParagraph('Recent Activity');
+    heading.setHeading(DocumentApp.ParagraphHeading.HEADING2);
+    
+    if (reportSummary.recentlyUpdatedKRs.length === 0) {
+      this.body.appendParagraph('No recent updates found in the specified lookback period.');
+      this.body.appendParagraph(''); // Spacing
+      return;
+    }
+    
+    this.body.appendParagraph(`${reportSummary.recentlyUpdatedKRs.length} key results updated recently:`);
+    
+    // Sort by last updated (most recent first)
+    const sortedKRs = [...reportSummary.recentlyUpdatedKRs]
+      .sort((a, b) => new Date(b.lastUpdated) - new Date(a.lastUpdated));
+    
+    const activityList = this.body.appendList();
+    
+    for (const kr of sortedKRs.slice(0, 10)) { // Limit to top 10
+      const statusEmoji = this.getStatusEmoji(kr.status);
+      const progress = DataTransformUtils.formatProgress(kr.progress);
+      const lastUpdated = DataTransformUtils.formatDate(new Date(kr.lastUpdated));
+      
+      activityList.appendListItem(
+        `${statusEmoji} ${DataTransformUtils.truncateText(kr.name, 60)} (${progress}) - Updated ${lastUpdated}`
+      );
+    }
+    
+    if (reportSummary.recentlyUpdatedKRs.length > 10) {
+      this.body.appendParagraph(`... and ${reportSummary.recentlyUpdatedKRs.length - 10} more`);
+    }
+    
+    this.body.appendParagraph(''); // Spacing
+  }
+  
+  /**
+   * Add insights section
+   * @param {ReportSummary} reportSummary - Report summary data
+   * @param {DataProcessor} processor - Data processor for insights
+   */
+  addInsights(reportSummary, processor) {
+    const heading = this.body.appendParagraph('Key Insights & Recommendations');
+    heading.setHeading(DocumentApp.ParagraphHeading.HEADING2);
+    
+    const insights = processor.generateInsights(reportSummary);
+    
+    if (insights.length === 0) {
+      this.body.appendParagraph('No specific insights available at this time.');
+      return;
+    }
+    
+    const insightsList = this.body.appendList();
+    
+    for (const insight of insights) {
+      insightsList.appendListItem(insight);
+    }
+    
+    this.body.appendParagraph(''); // Spacing
+  }
+  
+  /**
+   * Add document footer
+   * @param {ReportSummary} reportSummary - Report summary data
+   */
+  addFooter(reportSummary) {
+    this.body.appendHorizontalRule();
+    
+    const footer = this.body.appendParagraph(`Report generated automatically on ${reportSummary.generatedAt.toLocaleString()}`);
+    footer.getChild(0).asText().setItalic(true).setFontSize(10);
+    
+    const source = this.body.appendParagraph('Source: Quantive API via Google Apps Script');
+    source.getChild(0).asText().setItalic(true).setFontSize(10);
+  }
+  
+  /**
+   * Create a text-based progress bar
+   * @param {number} progress - Progress percentage (0-100)
+   * @returns {string} Text progress bar
+   */
+  createTextProgressBar(progress) {
+    const barLength = 20;
+    const filledLength = Math.round((progress / 100) * barLength);
+    const filled = '█'.repeat(filledLength);
+    const empty = '░'.repeat(barLength - filledLength);
+    return `[${filled}${empty}]`;
+  }
+  
+  /**
+   * Get emoji for status
+   * @param {string} status - Status string
+   * @returns {string} Emoji
+   */
+  getStatusEmoji(status) {
+    const emojiMap = {
+      'On Track': '✅',
+      'At Risk': '⚠️',
+      'Behind': '🚨',
+      'Completed': '🎉',
+      'Not Started': '⏸️'
+    };
+    return emojiMap[status] || '📊';
+  }
+  
+  /**
+   * Get the document ID
+   * @returns {string} Document ID
+   */
+  getDocumentId() {
+    return this.docId;
+  }
+}
+
+// ============================================================================
 // MAIN ENTRY POINT
 // ============================================================================
 
@@ -727,7 +1041,20 @@ function generateQuantiveReport() {
     const reportSummary = processor.processSessionData(sessionData);
     Logger.log('Report summary generated successfully');
     
-    // TODO: Output to Google Docs/Sheets
+    // Generate Google Docs report
+    if (config.googleDocId || !config.googleSheetId) {
+      const docsGenerator = new GoogleDocsReportGenerator(config.googleDocId);
+      const docUrl = docsGenerator.generateReport(reportSummary, processor);
+      Logger.log(`Google Docs report generated: ${docUrl}`);
+      
+      // Update config with new doc ID if it was created
+      if (!config.googleDocId) {
+        ConfigManager.setProperty(CONFIG.PROPERTIES.GOOGLE_DOC_ID, docsGenerator.getDocumentId());
+        Logger.log('Saved new Google Doc ID to configuration');
+      }
+    }
+    
+    // TODO: Generate Google Sheets report if configured
     
     Logger.log('Quantive report generation completed successfully');
     
