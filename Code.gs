@@ -95,10 +95,11 @@
  */
 
 // ============================================================================
-// CONFIGURATION CONSTANTS
+// APPLICATION CONSTANTS
 // ============================================================================
+// Note: User configuration (API tokens, etc.) is now in config.gs
 
-const CONFIG = {
+const APP_CONFIG = {
   // Quantive API Configuration
   QUANTIVE_BASE_URL: 'https://api.quantive.com/v1',
   API_TIMEOUT: 30000, // 30 seconds
@@ -108,16 +109,6 @@ const CONFIG = {
   // Report Configuration
   DEFAULT_LOOKBACK_DAYS: 7,
   MAX_EXECUTION_TIME: 300000, // 5 minutes (under 6 minute limit)
-  
-  // Property Keys for PropertiesService
-  PROPERTIES: {
-    QUANTIVE_API_TOKEN: 'QUANTIVE_API_TOKEN',
-    QUANTIVE_ACCOUNT_ID: 'QUANTIVE_ACCOUNT_ID',
-    SESSION_ID: 'SESSION_ID',
-    GOOGLE_DOC_ID: 'GOOGLE_DOC_ID',
-    GOOGLE_SHEET_ID: 'GOOGLE_SHEET_ID',
-    LOOKBACK_DAYS: 'LOOKBACK_DAYS'
-  },
   
   // Status mappings
   STATUS_MAPPING: {
@@ -298,7 +289,7 @@ class QuantiveKeyResult {
    * @param {number} lookbackDays - Number of days to look back
    * @returns {boolean}
    */
-  isRecentlyUpdated(lookbackDays = CONFIG.DEFAULT_LOOKBACK_DAYS) {
+  isRecentlyUpdated(lookbackDays = APP_CONFIG.DEFAULT_LOOKBACK_DAYS) {
     if (!this.lastUpdated) return false;
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - lookbackDays);
@@ -409,26 +400,30 @@ class ConfigManager {
   }
   
   /**
-   * Get all required configuration values
+   * Get all required configuration values from config.gs
    * @returns {Object} Configuration object
    */
   static getConfig() {
-    const environment = this.getProperty('ENVIRONMENT', 'production');
+    if (typeof CONFIG === 'undefined') {
+      throw new Error('CONFIG not found. Please create config.gs file from config.example.gs template.');
+    }
+    
+    const environment = CONFIG.ENVIRONMENT || 'production';
     
     return {
-      apiToken: this.getProperty(CONFIG.PROPERTIES.QUANTIVE_API_TOKEN),
-      accountId: this.getProperty(CONFIG.PROPERTIES.QUANTIVE_ACCOUNT_ID),
-      sessionId: this.resolveSessionId(this.getProperty(CONFIG.PROPERTIES.SESSION_ID)),
-      googleDocId: this.getProperty(CONFIG.PROPERTIES.GOOGLE_DOC_ID),
-      googleSheetId: this.getProperty(CONFIG.PROPERTIES.GOOGLE_SHEET_ID),
-      lookbackDays: parseInt(this.getProperty(CONFIG.PROPERTIES.LOOKBACK_DAYS, CONFIG.DEFAULT_LOOKBACK_DAYS.toString())),
+      apiToken: CONFIG.QUANTIVE_API_TOKEN,
+      accountId: CONFIG.QUANTIVE_ACCOUNT_ID,
+      sessionId: this.resolveSessionId(CONFIG.SESSION_ID),
+      googleDocId: CONFIG.GOOGLE_DOC_ID || '',
+      googleSheetId: CONFIG.GOOGLE_SHEET_ID || '',
+      lookbackDays: parseInt(CONFIG.LOOKBACK_DAYS || APP_CONFIG.DEFAULT_LOOKBACK_DAYS),
       environment: environment,
       
-      // Environment-specific settings
-      apiRateLimitDelay: this.getEnvironmentSetting(environment, 'API_RATE_LIMIT_DELAY', 1000),
-      maxRetries: this.getEnvironmentSetting(environment, 'MAX_RETRIES', 3),
-      retryDelay: this.getEnvironmentSetting(environment, 'RETRY_DELAY', 2000),
-      logLevel: this.getEnvironmentSetting(environment, 'LOG_LEVEL', 'INFO')
+      // Environment-specific settings with defaults
+      apiRateLimitDelay: 1000,
+      maxRetries: APP_CONFIG.MAX_RETRIES,
+      retryDelay: APP_CONFIG.RETRY_DELAY,
+      logLevel: 'INFO'
     };
   }
   
@@ -576,17 +571,16 @@ class ConfigManager {
 
     try {
       // Get API configuration for session lookup
-      const config = {
-        apiToken: this.getProperty(CONFIG.PROPERTIES.QUANTIVE_API_TOKEN),
-        accountId: this.getProperty(CONFIG.PROPERTIES.QUANTIVE_ACCOUNT_ID)
-      };
+      if (typeof CONFIG === 'undefined') {
+        throw new Error('CONFIG not found. Please create config.gs file from config.example.gs template.');
+      }
 
-      if (!config.apiToken || !config.accountId) {
+      if (!CONFIG.QUANTIVE_API_TOKEN || !CONFIG.QUANTIVE_ACCOUNT_ID) {
         throw new Error('API token and account ID must be configured before resolving session names');
       }
 
       // Create API client instance for session lookup
-      const apiClient = new QuantiveApiClient(config.apiToken, config.accountId);
+      const apiClient = new QuantiveApiClient(CONFIG.QUANTIVE_API_TOKEN, CONFIG.QUANTIVE_ACCOUNT_ID);
       
       // Fetch all sessions to find matching name
       const sessions = apiClient.getSessions();
@@ -693,7 +687,7 @@ class QuantiveApiClient {
   constructor(apiToken, accountId) {
     this.apiToken = apiToken;
     this.accountId = accountId;
-    this.baseUrl = CONFIG.QUANTIVE_BASE_URL;
+    this.baseUrl = APP_CONFIG.QUANTIVE_BASE_URL;
     this.headers = {
       'Authorization': `Bearer ${apiToken}`,
       'Content-Type': 'application/json',
@@ -739,22 +733,22 @@ class QuantiveApiClient {
   executeWithRetry(fn) {
     let lastError;
     
-    for (let attempt = 1; attempt <= CONFIG.MAX_RETRIES; attempt++) {
+    for (let attempt = 1; attempt <= APP_CONFIG.MAX_RETRIES; attempt++) {
       try {
         return fn();
       } catch (error) {
         lastError = error;
         Logger.log(`Attempt ${attempt} failed: ${error.toString()}`);
         
-        if (attempt < CONFIG.MAX_RETRIES) {
-          const delay = CONFIG.RETRY_DELAY * Math.pow(2, attempt - 1); // Exponential backoff
+        if (attempt < APP_CONFIG.MAX_RETRIES) {
+          const delay = APP_CONFIG.RETRY_DELAY * Math.pow(2, attempt - 1); // Exponential backoff
           Logger.log(`Retrying in ${delay}ms...`);
           Utilities.sleep(delay);
         }
       }
     }
     
-    throw new Error(`API request failed after ${CONFIG.MAX_RETRIES} attempts. Last error: ${lastError.toString()}`);
+    throw new Error(`API request failed after ${APP_CONFIG.MAX_RETRIES} attempts. Last error: ${lastError.toString()}`);
   }
   
   /**
@@ -923,7 +917,7 @@ class DataProcessor {
    * Constructor
    * @param {number} lookbackDays - Number of days to look back for recent activity
    */
-  constructor(lookbackDays = CONFIG.DEFAULT_LOOKBACK_DAYS) {
+  constructor(lookbackDays = APP_CONFIG.DEFAULT_LOOKBACK_DAYS) {
     this.lookbackDays = lookbackDays;
   }
   
@@ -1005,7 +999,7 @@ class DataProcessor {
     };
     
     for (const kr of keyResults) {
-      const mappedStatus = CONFIG.STATUS_MAPPING[kr.status] || 'Not Started';
+      const mappedStatus = APP_CONFIG.STATUS_MAPPING[kr.status] || 'Not Started';
       if (counts.hasOwnProperty(mappedStatus)) {
         counts[mappedStatus]++;
       }
@@ -1026,7 +1020,7 @@ class DataProcessor {
       id: kr.id,
       name: kr.name,
       owner: kr.owner,
-      status: CONFIG.STATUS_MAPPING[kr.status] || kr.status,
+      status: APP_CONFIG.STATUS_MAPPING[kr.status] || kr.status,
       progress: kr.progress,
       currentValue: kr.currentValue,
       targetValue: kr.targetValue,
@@ -1649,7 +1643,7 @@ class GoogleSheetsReportGenerator {
    */
   prepareRowData(reportSummary, processor) {
     const insights = processor.generateInsights(reportSummary);
-    const keyInsights = insights.slice(0, CONFIG.MAX_INSIGHTS).join(' | '); // Take first few insights
+    const keyInsights = insights.slice(0, APP_CONFIG.MAX_INSIGHTS).join(' | '); // Take first few insights
     
     return [
       DataTransformUtils.formatDate(new Date()), // Report Date
@@ -1748,7 +1742,7 @@ class GoogleSheetsReportGenerator {
    * Archive old data (keep last N entries)
    * @param {number} maxRows - Maximum number of data rows to keep
    */
-  archiveOldData(maxRows = CONFIG.SHEET_MAX_ROWS) {
+  archiveOldData(maxRows = APP_CONFIG.SHEET_MAX_ROWS) {
     const totalRows = this.sheet.getLastRow();
     const dataRows = totalRows - 1; // Excluding header
     
@@ -2118,10 +2112,10 @@ function generateQuantiveReport() {
       Logger.log(`Google Docs report generated: ${docUrl}`);
       results.docUrl = docUrl;
       
-      // Update config with new doc ID if it was created
+      // Log new doc ID if it was created
       if (!config.googleDocId) {
-        ConfigManager.setProperty(CONFIG.PROPERTIES.GOOGLE_DOC_ID, docsGenerator.getDocumentId());
-        Logger.log('Saved new Google Doc ID to configuration');
+        Logger.log('New Google Doc created with ID: ' + docsGenerator.getDocumentId());
+        Logger.log('💡 Consider adding this ID to your config.gs file for future reports');
       }
     }
     
@@ -2132,10 +2126,10 @@ function generateQuantiveReport() {
       Logger.log(`Google Sheets report generated: ${sheetUrl}`);
       results.sheetUrl = sheetUrl;
       
-      // Update config with new sheet ID if it was created
+      // Log new sheet ID if it was created
       if (!config.googleSheetId) {
-        ConfigManager.setProperty(CONFIG.PROPERTIES.GOOGLE_SHEET_ID, sheetsGenerator.getSpreadsheetId());
-        Logger.log('Saved new Google Sheet ID to configuration');
+        Logger.log('New Google Sheet created with ID: ' + sheetsGenerator.getSpreadsheetId());
+        Logger.log('💡 Consider adding this ID to your config.gs file for future reports');
       }
       
       // Optional: Archive old data to keep sheet manageable
@@ -2155,81 +2149,38 @@ function generateQuantiveReport() {
 }
 
 /**
- * Setup function to initialize configuration
- * Run this once to set up your credentials and settings
+ * Quick Start function - generates your first report
+ * Make sure you have created config.gs from config.example.gs first!
  */
-function setupConfiguration() {
-  // Example configuration - replace with your actual values
-  const exampleConfig = {
-    [CONFIG.PROPERTIES.QUANTIVE_API_TOKEN]: 'your-api-token-here',
-    [CONFIG.PROPERTIES.QUANTIVE_ACCOUNT_ID]: 'your-account-id-here',
-    [CONFIG.PROPERTIES.SESSION_ID]: 'your-session-id-here',
-    [CONFIG.PROPERTIES.GOOGLE_DOC_ID]: 'your-google-doc-id-here', // Optional
-    [CONFIG.PROPERTIES.GOOGLE_SHEET_ID]: 'your-google-sheet-id-here', // Optional
-    [CONFIG.PROPERTIES.LOOKBACK_DAYS]: '7',
-    'ENVIRONMENT': 'development' // Optional: development, staging, production
-  };
-  
-  Logger.log('To configure this script, use ConfigManager.setProperties() with your actual values');
-  Logger.log('Example: ConfigManager.setProperties({...})');
-  Logger.log('Required properties: ' + JSON.stringify(Object.keys(exampleConfig)));
-  Logger.log('');
-  Logger.log('For secure configuration management, see config.example.js for detailed setup instructions');
-}
-
-/**
- * Import configuration from a configuration object
- * @param {Object} configObj - Configuration object with all properties
- */
-function importConfiguration(configObj) {
-  if (!configObj || typeof configObj !== 'object') {
-    throw new Error('Invalid configuration object provided');
-  }
-  
-  // Validate required properties
-  const required = [
-    CONFIG.PROPERTIES.QUANTIVE_API_TOKEN,
-    CONFIG.PROPERTIES.QUANTIVE_ACCOUNT_ID,
-    CONFIG.PROPERTIES.SESSION_ID
-  ];
-  
-  for (const prop of required) {
-    if (!configObj[prop]) {
-      throw new Error(`Missing required property: ${prop}`);
+function quickStart() {
+  try {
+    Logger.log('🚀 Starting Quantive report generation...');
+    
+    // Test configuration
+    if (testConfiguration()) {
+      Logger.log('✅ Configuration validated successfully');
+    } else {
+      Logger.log('❌ Configuration validation failed');
+      return false;
     }
+    
+    // Generate first report
+    const result = generateQuantiveReport();
+    Logger.log('✅ Report generated successfully!');
+    
+    if (result.docUrl) {
+      Logger.log(`📄 Google Doc: ${result.docUrl}`);
+    }
+    if (result.sheetUrl) {
+      Logger.log(`📊 Google Sheet: ${result.sheetUrl}`);
+    }
+    
+    return true;
+  } catch (error) {
+    Logger.log('❌ Quick start failed: ' + error.toString());
+    Logger.log('💡 Make sure you have created config.gs from config.example.gs template');
+    return false;
   }
-  
-  // Set properties
-  ConfigManager.setProperties(configObj);
-  Logger.log('Configuration imported successfully');
-  Logger.log(`Properties set: ${Object.keys(configObj).length}`);
-}
-
-/**
- * Export current configuration (excluding sensitive values)
- * @param {boolean} includeSensitive - Whether to include API tokens (default: false)
- * @returns {Object} Configuration object
- */
-function exportConfiguration(includeSensitive = false) {
-  const config = ConfigManager.getConfig();
-  const exportObj = {
-    [CONFIG.PROPERTIES.SESSION_ID]: config.sessionId,
-    [CONFIG.PROPERTIES.GOOGLE_DOC_ID]: config.googleDocId,
-    [CONFIG.PROPERTIES.GOOGLE_SHEET_ID]: config.googleSheetId,
-    [CONFIG.PROPERTIES.LOOKBACK_DAYS]: config.lookbackDays.toString(),
-    'ENVIRONMENT': config.environment
-  };
-  
-  if (includeSensitive) {
-    exportObj[CONFIG.PROPERTIES.QUANTIVE_API_TOKEN] = config.apiToken;
-    exportObj[CONFIG.PROPERTIES.QUANTIVE_ACCOUNT_ID] = config.accountId;
-    Logger.log('WARNING: Exported configuration includes sensitive API credentials');
-  } else {
-    exportObj[CONFIG.PROPERTIES.QUANTIVE_API_TOKEN] = '[HIDDEN]';
-    exportObj[CONFIG.PROPERTIES.QUANTIVE_ACCOUNT_ID] = '[HIDDEN]';
-  }
-  
-  return exportObj;
 }
 
 /**
@@ -2414,7 +2365,7 @@ class ErrorHandler {
    * @returns {number} Delay in milliseconds
    */
   static calculateRetryDelay(retryCount, errorType) {
-    const baseDelay = CONFIG.RETRY_DELAY || 1000;
+    const baseDelay = APP_CONFIG.RETRY_DELAY || 1000;
     
     // Special handling for rate limiting
     if (errorType === 'RATE_LIMIT') {
@@ -3541,28 +3492,6 @@ class IntegrationTestSuite {
           }
         },
         {
-          name: 'Missing Configuration',
-          test: () => {
-            try {
-              // Temporarily clear a required property
-              const originalValue = ConfigManager.getProperty(CONFIG.PROPERTIES.QUANTIVE_API_TOKEN);
-              ConfigManager.setProperty(CONFIG.PROPERTIES.QUANTIVE_API_TOKEN, '');
-              
-              try {
-                ConfigManager.validateConfig();
-                return { success: false, reason: 'Should have failed validation' };
-              } catch (expectedError) {
-                return { success: true, error: expectedError.toString() };
-              } finally {
-                // Restore original value
-                ConfigManager.setProperty(CONFIG.PROPERTIES.QUANTIVE_API_TOKEN, originalValue);
-              }
-            } catch (testError) {
-              return { success: false, reason: testError.toString() };
-            }
-          }
-        },
-        {
           name: 'Corrupted Data Processing',
           test: () => {
             try {
@@ -3795,7 +3724,7 @@ class IntegrationTestSuite {
   static extractGoogleDocId(url) {
     try {
       if (!url) return null;
-      const match = url.match(CONFIG.GOOGLE_DOC_URL_PATTERN);
+      const match = url.match(APP_CONFIG.GOOGLE_DOC_URL_PATTERN);
       return match ? match[1] : null;
     } catch (error) {
       Logger.log(`Failed to extract doc ID from URL: ${url}`);
@@ -3892,7 +3821,7 @@ class PerformanceTestSuite {
     
     try {
       const startTime = Date.now();
-      const maxAllowedTime = CONFIG.MAX_EXECUTION_TIME || 300000; // 5 minutes default
+      const maxAllowedTime = APP_CONFIG.MAX_EXECUTION_TIME || 300000; // 5 minutes default
       
       // Test various components and measure execution time
       const componentTests = [
@@ -4082,13 +4011,13 @@ class PerformanceTestSuite {
             const apiClient = new QuantiveApiClient(config.apiToken, config.accountId);
             
             // Verify rate limiting configuration exists
-            if (!CONFIG.MAX_RETRIES || !CONFIG.RETRY_DELAY) {
+            if (!APP_CONFIG.MAX_RETRIES || !APP_CONFIG.RETRY_DELAY) {
               throw new Error('Rate limiting configuration missing');
             }
             
             return {
-              maxRetries: CONFIG.MAX_RETRIES,
-              retryDelay: CONFIG.RETRY_DELAY,
+              maxRetries: APP_CONFIG.MAX_RETRIES,
+              retryDelay: APP_CONFIG.RETRY_DELAY,
               hasRetryLogic: typeof apiClient.executeWithRetry === 'function'
             };
           }

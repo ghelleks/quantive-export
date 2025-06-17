@@ -69,73 +69,54 @@ Transform your Quantive (formerly Gtmhub) data into beautiful, automated reports
 
 ### 4. **Configure Your Script**
 
-**📝 Add this configuration function to your Google Apps Script:**
+**📝 Create your configuration file:**
 
-1. In your Google Apps Script editor, scroll to the bottom of the code
-2. Add the following function with your actual credentials:
+1. In your Google Apps Script editor, create a **new file** called `config.gs`:
+   - Click the **➕** button next to "Files"  
+   - Select **"Script"**
+   - Name it **"config"** (it will become `config.gs`)
+
+2. **Copy the template** from [`config.example.gs`](config.example.gs) into your new `config.gs` file
+
+3. **Replace the placeholder values** with your actual credentials:
 
 ```javascript
-function quickStart() {
-  // Step 1: Review the configuration template
-  // Open config.example.js for comprehensive setup guidance
+const CONFIG = {
+  // Required Quantive API Credentials
+  QUANTIVE_API_TOKEN: 'qtv_1234567890abcdef...',           // Your real API token
+  QUANTIVE_ACCOUNT_ID: 'your-actual-account-id',           // Your real account ID
   
-  // Step 2: Set up your configuration with actual values
-  const config = {
-    'QUANTIVE_API_TOKEN': 'your-actual-api-token',     // REPLACE with real token
-    'QUANTIVE_ACCOUNT_ID': 'your-actual-account-id',   // REPLACE with real account ID 
-    'SESSION_ID': 'Q4 2024 OKRs',                      // REPLACE with session name or UUID
-    'ENVIRONMENT': 'production',                       // Environment setting
-    'GOOGLE_DOC_ID': '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlWKjgqrvhT6bZc',    // Optional: Doc ID from step 3
-    'GOOGLE_SHEET_ID': 'your-sheet-id-from-step-3'    // Optional: Sheet ID from step 3
-  };
+  // Target Session (name or UUID)
+  SESSION_ID: 'Q4 2024 OKRs',                             // Your session name
   
-  try {
-    // Step 3: Import with enhanced validation
-    importConfiguration(config);
-    Logger.log('✅ Configuration imported successfully');
-    
-    // Step 4: Validate setup
-    if (testConfiguration()) {
-      Logger.log('✅ Configuration validated - ready to generate reports!');
-    } else {
-      Logger.log('❌ Configuration validation failed - check your credentials');
-    }
-    
-    // Step 5: Test API connectivity
-    if (testApiConnection()) {
-      Logger.log('✅ API connection verified - system ready!');
-    }
-  } catch (error) {
-    Logger.log('❌ Setup failed: ' + error.toString());
-  }
-}
+  // Optional: Output Document IDs (from step 3)
+  GOOGLE_DOC_ID: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlWKjgqrvhT6bZc',    // Doc ID
+  GOOGLE_SHEET_ID: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlWKjgqrvhT6bZc',   // Sheet ID
+  
+  // Settings
+  ENVIRONMENT: 'production',
+  LOOKBACK_DAYS: 7
+};
 ```
 
-**🚀 Run the configuration:**
+4. **Save both files** (Ctrl+S / Cmd+S)
 
-3. **Save your script** (Ctrl+S / Cmd+S)
-4. In the function dropdown at the top, **select "quickStart"**
-5. Click the **▶️ Run button**
-6. **Grant permissions** when prompted (Google will ask for authorization)
-7. Check the **execution log** (View → Logs) to see if setup was successful
-
-> **⚠️ Security Note**: Always replace placeholder values with your actual credentials. Never commit real API tokens to version control.
+> **⚠️ Security Note**: Never share your `config.gs` file or commit it to version control - it contains your API credentials!
 
 ### 5. **Generate Your First Report**
 
-Once configuration is complete, generate your first report:
+Now you're ready to generate your first report:
 
-1. In the function dropdown, **select "generateQuantiveReport"**  
-2. Click **▶️ Run**
-3. Check the **execution log** for the report URLs
-4. **Open the generated reports** in Google Docs/Sheets
+1. In the function dropdown at the top, **select "quickStart"**  
+2. Click the **▶️ Run button**
+3. **Grant permissions** when prompted (Google will ask for authorization)
+4. Check the **execution log** (View → Logs) to see:
+   - ✅ Configuration validation results
+   - 📄 Google Doc report URL  
+   - 📊 Google Sheet data URL
+5. **Open the generated reports** by clicking the URLs in the log
 
-**Alternative: Create a custom function**
-```javascript
-function createMyFirstReport() {
-  return generateQuantiveReport();
-}
-```
+**🎉 That's it!** Your automated OKR reporting is now set up and ready.
 
 ### 6. **Set Up Automation** (Optional)
 ```javascript

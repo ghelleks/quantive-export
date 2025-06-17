@@ -1,0 +1,50 @@
+[
+  {
+    "id": "12345678-abcd-1234-efgh-123456789012",
+    "name": "Q4 2024 OKRs",
+    "description": "Fourth quarter objectives and key results",
+    "startDate": "2024-10-01",
+    "endDate": "2024-12-31",
+    "status": "active"
+  },
+  {
+    "id": "87654321-dcba-4321-hgfe-210987654321",
+    "name": "Development Goals",
+    "description": "Engineering team development objectives",
+    "startDate": "2024-01-01",
+    "endDate": "2024-12-31",
+    "status": "active"
+  },
+  {
+    "id": "11111111-2222-3333-4444-555555555555",
+    "name": "Test Session",
+    "description": "Test session for automation",
+    "startDate": "2024-01-01",
+    "endDate": "2024-12-31",
+    "status": "active"
+  },
+  {
+    "id": "99999999-8888-7777-6666-555555555555",
+    "name": "Special Characters & Symbols!",
+    "description": "Session with special characters in name",
+    "startDate": "2024-01-01",
+    "endDate": "2024-12-31",
+    "status": "active"
+  },
+  {
+    "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    "name": "Archived Session",
+    "description": "This session is archived",
+    "startDate": "2023-01-01",
+    "endDate": "2023-12-31",
+    "status": "archived"
+  },
+  {
+    "id": "ffffffff-eeee-dddd-cccc-bbbbbbbbbbbb",
+    "name": "",
+    "description": "Session with empty name",
+    "startDate": "2024-01-01",
+    "endDate": "2024-12-31",
+    "status": "active"
+  }
+]

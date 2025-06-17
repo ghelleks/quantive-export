@@ -1,0 +1,35 @@
+# Environment files with real credentials
+.env.test
+.env.local
+.env.*.local
+
+# Configuration files with real credentials
+config.gs
+
+# Test output that might contain sensitive data
+test-results/
+coverage-with-data/
+coverage/
+
+# Node.js dependencies
+node_modules/
+
+# Test output
+*.log
+npm-debug.log*
+
+# IDE files that might cache credentials
+.vscode/settings.json
+.idea/workspace.xml
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Jest cache
+.jest/
+
+# Test artifacts
+junit.xml
