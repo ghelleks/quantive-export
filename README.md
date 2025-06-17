@@ -51,9 +51,28 @@ Transform your Quantive (formerly Gtmhub) data into beautiful, automated reports
 - 📋 Copy and paste the contents of [`Code.gs`](Code.gs) into your project
 - 💾 Save your project with a descriptive name
 
-### 3. **Secure Configuration Setup (v2.0)**
+### 3. **Create Output Documents** (Optional but Recommended)
 
-**NEW**: Enhanced setup with validation and security features:
+**📄 For Google Docs Reports:**
+- Go to [docs.google.com](https://docs.google.com) and create a new document
+- Name it "Quantive OKR Report" or similar
+- Copy the **Document ID** from the URL:
+  ```
+  https://docs.google.com/document/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlWKjgqrvhT6bZc/edit
+                                   ↑ This is your Document ID ↑
+  ```
+
+**📊 For Google Sheets Data Tracking:**
+- Go to [sheets.google.com](https://sheets.google.com) and create a new spreadsheet  
+- Name it "Quantive OKR Data" or similar
+- Copy the **Spreadsheet ID** from the URL (same format as above)
+
+### 4. **Configure Your Script**
+
+**📝 Add this configuration function to your Google Apps Script:**
+
+1. In your Google Apps Script editor, scroll to the bottom of the code
+2. Add the following function with your actual credentials:
 
 ```javascript
 function quickStart() {
@@ -65,8 +84,9 @@ function quickStart() {
     'QUANTIVE_API_TOKEN': 'your-actual-api-token',     // REPLACE with real token
     'QUANTIVE_ACCOUNT_ID': 'your-actual-account-id',   // REPLACE with real account ID 
     'SESSION_ID': 'Q4 2024 OKRs',                      // REPLACE with session name or UUID
-    'ENVIRONMENT': 'production',                       // NEW: Environment setting
-    'GOOGLE_DOC_ID': 'your-google-doc-id'              // Optional: for formatted reports
+    'ENVIRONMENT': 'production',                       // Environment setting
+    'GOOGLE_DOC_ID': '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlWKjgqrvhT6bZc',    // Optional: Doc ID from step 3
+    'GOOGLE_SHEET_ID': 'your-sheet-id-from-step-3'    // Optional: Sheet ID from step 3
   };
   
   try {
@@ -91,16 +111,33 @@ function quickStart() {
 }
 ```
 
+**🚀 Run the configuration:**
+
+3. **Save your script** (Ctrl+S / Cmd+S)
+4. In the function dropdown at the top, **select "quickStart"**
+5. Click the **▶️ Run button**
+6. **Grant permissions** when prompted (Google will ask for authorization)
+7. Check the **execution log** (View → Logs) to see if setup was successful
+
 > **⚠️ Security Note**: Always replace placeholder values with your actual credentials. Never commit real API tokens to version control.
 
-### 4. **Generate Your First Report**
+### 5. **Generate Your First Report**
+
+Once configuration is complete, generate your first report:
+
+1. In the function dropdown, **select "generateQuantiveReport"**  
+2. Click **▶️ Run**
+3. Check the **execution log** for the report URLs
+4. **Open the generated reports** in Google Docs/Sheets
+
+**Alternative: Create a custom function**
 ```javascript
 function createMyFirstReport() {
   return generateQuantiveReport();
 }
 ```
 
-### 5. **Set Up Automation** (Optional)
+### 6. **Set Up Automation** (Optional)
 ```javascript
 function setupWeeklyReports() {
   // Runs every Monday at 9 AM
@@ -116,19 +153,83 @@ function setupWeeklyReports() {
 ## 📋 What You'll Get
 
 ### 📄 **Formatted Google Docs Reports**
-Beautiful, professional reports with:
-- **Executive Summary** with key metrics and progress
-- **Detailed Objective Breakdown** with status and ownership
-- **Recent Activity** highlighting what's changed
-- **Smart Insights** with automated recommendations
-- **Clean Formatting** ready to share with stakeholders
 
-### 📊 **Historical Data Tracking**
-Comprehensive Google Sheets with 15 data points per report:
-- Progress trends over time
-- Status distribution changes  
-- Team engagement metrics
-- Historical insights for pattern analysis
+Beautiful, professional reports that automatically generate from your Quantive data:
+
+![Sample Report Screenshot](docs/images/sample-report.png)
+*Sample Google Docs report showing executive summary, objective status, and recent activity*
+
+> **📸 Note**: Screenshots show actual output from the system. To generate similar reports for your organization, follow the [Quick Start](#-quick-start) guide above.
+
+**Report Sections Include:**
+- **📊 Executive Summary**
+  - Overall progress percentage with visual indicators
+  - Total objectives and key results count
+  - Days remaining in the session
+  - Quick status overview with emoji indicators
+
+- **🎯 Objective Status Breakdown**
+  - Detailed table with all objectives
+  - Progress bars and status indicators
+  - Owner information and due dates
+  - Color-coded status (On Track 🟢, At Risk 🟡, Behind 🔴)
+
+- **📈 Recent Activity Section**
+  - Key results updated in the last 7 days (configurable)
+  - "What changed" highlights with timestamps
+  - Progress updates and status changes
+  - Team engagement insights
+
+- **💡 Smart Insights & Recommendations**
+  - Automated analysis of trends and patterns
+  - Actionable recommendations for improvement
+  - Risk identification and mitigation suggestions
+  - Achievement celebrations and momentum highlights
+
+- **📐 Professional Formatting**
+  - Clean, consistent styling ready for executive sharing
+  - Proper headers, tables, and spacing
+  - Branded appearance with consistent formatting
+  - Mobile-friendly layout for viewing on any device
+
+### 📊 **Historical Data Tracking in Google Sheets**
+
+![Sample Sheet Screenshot](docs/images/sample-sheet.png)
+*Google Sheets data tracking with 15+ metrics per report for trend analysis*
+
+> **📊 Live Data**: This spreadsheet automatically populates with each report run, building a comprehensive dataset for analytics and trending.
+
+Comprehensive spreadsheet tracking with **15+ data points per report**:
+
+**Core Metrics:**
+- 📊 Overall progress percentage
+- 🎯 Total objectives and key results
+- ⏰ Session timeline and days remaining
+- 📈 Progress velocity and trends
+
+**Status Distribution:**
+- 🟢 On Track count and percentage
+- 🟡 At Risk count and percentage  
+- 🔴 Behind count and percentage
+- ⚪ Not Started count and percentage
+
+**Engagement Metrics:**
+- 🔄 Recent activity volume
+- 👥 Active contributors count
+- 📅 Update frequency patterns
+- 🎯 Goal completion velocity
+
+**Trend Analysis:**
+- 📈 Week-over-week progress changes
+- 🔄 Status transition patterns
+- ⚡ Momentum indicators (accelerating/decelerating)
+- 🚨 Early warning signals for at-risk objectives
+
+**Perfect for building:**
+- Executive dashboards with charts and graphs
+- Quarterly trend reports and analytics
+- Performance tracking and forecasting
+- Team engagement and productivity metrics
 
 ---
 
@@ -181,7 +282,6 @@ We've made this as easy as possible to set up and maintain:
 | **[Configuration Templates](CONFIG_TEMPLATES.md)** | Pre-built configs with security best practices | Quick setup and environment management |
 | **[config.example.js](config.example.js)** | **NEW**: Comprehensive configuration template with security guidance | Secure setup and credential management |
 | **[Deployment Checklist](DEPLOYMENT_CHECKLIST.md)** | Step-by-step production deployment | IT teams and enterprise deployments |
-| **[Testing Scenarios](TESTING_SCENARIOS.md)** | Comprehensive testing documentation | Developers and quality assurance |
 
 ---
 
@@ -332,7 +432,7 @@ Whether you have 5 objectives or 500, this system scales with your organization.
 1. **⚡ [Quick Start](#-quick-start)** - Get running in 15 minutes
 2. **📖 [Read the User Guide](USER_GUIDE.md)** - Comprehensive setup instructions  
 3. **🎯 [Choose Your Configuration](CONFIG_TEMPLATES.md)** - Find the perfect setup for your needs
-4. **🧪 [Test Everything](TESTING_SCENARIOS.md)** - Validate your deployment
+4. **📋 [Follow Deployment Checklist](DEPLOYMENT_CHECKLIST.md)** - Ensure proper setup
 
 ---
 
@@ -352,7 +452,7 @@ Whether you have 5 objectives or 500, this system scales with your organization.
 This project was crafted with attention to:
 - **🛡️ Security**: Enterprise-grade credential protection with v2.0 enhancements
 - **📖 Documentation**: Clear, helpful guides for every skill level and use case  
-- **🧪 Testing**: Comprehensive test suites and validation functions
+- **🔧 Validation**: Built-in configuration and connectivity validation
 - **⚡ Performance**: Optimized for Google Apps Script environment
 - **🎯 Usability**: Simple setup, powerful results, secure by default
 - **🔧 Maintainability**: Environment support and configuration management
