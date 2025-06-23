@@ -8,21 +8,30 @@
 const { requireRealCredentials, canRunIntegrationTests, getTestSessionData, getApiClientConfig } = require('../setup/credentials');
 
 // For integration tests, we need a real HTTP client
-// We'll replace UrlFetchApp with a real fetch implementation
-const fetch = require('node-fetch');
+// We'll replace UrlFetchApp with a synchronous HTTP implementation to match Google Apps Script
 
 global.UrlFetchApp = {
   fetch: (url, options) => {
-    return fetch(url, {
-      method: options.method || 'GET',
-      headers: options.headers || {},
-      body: options.payload || undefined
-    }).then(response => ({
-      getResponseCode: () => response.status,
-      getContentText: () => response.text(),
-      getHeaders: () => Object.fromEntries(response.headers.entries()),
-      getAllHeaders: () => Object.fromEntries(response.headers.entries())
-    }));
+    // Use sync-request for synchronous HTTP calls to match Google Apps Script behavior
+    const syncRequest = require('sync-request');
+    
+    try {
+      const response = syncRequest(options.method || 'GET', url, {
+        headers: options.headers || {},
+        body: options.payload || undefined,
+        timeout: 30000 // 30 second timeout
+      });
+      
+      return {
+        getResponseCode: () => response.statusCode,
+        getContentText: () => response.getBody('utf8'),
+        getHeaders: () => response.headers,
+        getAllHeaders: () => response.headers
+      };
+    } catch (error) {
+      // Handle network errors by throwing a descriptive error
+      throw new Error(`Network request failed: ${error.message}`);
+    }
   }
 };
 
