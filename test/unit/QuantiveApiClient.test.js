@@ -47,7 +47,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
     test('should create client with correct configuration', () => {
       expect(apiClient.apiToken).toBe('test-token-123');
       expect(apiClient.accountId).toBe('test-account-456');
-      expect(apiClient.baseUrl).toBe('https://api.quantive.com/v1');
+      expect(apiClient.baseUrl).toBe('https://app.us.quantive.com/results/api/v1');
     });
 
     test('should set up request headers correctly', () => {
@@ -72,7 +72,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
       const result = apiClient.getSessions();
       
       expect(global.UrlFetchApp.fetch).toHaveBeenCalledWith(
-        'https://api.quantive.com/v1/sessions',
+        'https://app.us.quantive.com/results/api/v1/sessions',
         expect.objectContaining({
           method: 'GET',
           headers: expect.objectContaining({
@@ -152,7 +152,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
       const result = apiClient.getSession(sessionId);
       
       expect(global.UrlFetchApp.fetch).toHaveBeenCalledWith(
-        `https://api.quantive.com/v1/sessions/${sessionId}`,
+        `https://app.us.quantive.com/results/api/v1/sessions/${sessionId}`,
         expect.objectContaining({
           method: 'GET'
         })
@@ -176,7 +176,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
       const result = apiClient.getObjectives(sessionId);
       
       expect(global.UrlFetchApp.fetch).toHaveBeenCalledWith(
-        `https://api.quantive.com/v1/sessions/${sessionId}/objectives`,
+        `https://app.us.quantive.com/results/api/v1/sessions/${sessionId}/objectives`,
         expect.objectContaining({
           method: 'GET'
         })
@@ -207,7 +207,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
       const lastCall = global.UrlFetchApp.fetch.mock.calls[0];
       const url = lastCall[0];
       
-      expect(url).toStartWith('https://api.quantive.com/v1/');
+      expect(url).toStartWith('https://app.us.quantive.com/results/api/v1/');
     });
 
     test('should set correct HTTP method', () => {
@@ -263,7 +263,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
       const result = apiClient.getKeyResults(objectiveId);
       
       expect(global.UrlFetchApp.fetch).toHaveBeenCalledWith(
-        `https://api.quantive.com/v1/objectives/${objectiveId}/key-results`,
+        `https://app.us.quantive.com/results/api/v1/objectives/${objectiveId}/key-results`,
         expect.objectContaining({
           method: 'GET'
         })

@@ -51,14 +51,20 @@ describe('Real Quantive API Integration Tests', () => {
       credentials = requireRealCredentials();
       testSessionData = getTestSessionData();
       
+      console.log('🔍 Debug: Loaded credentials from .env.test:');
+      console.log('- API Token:', credentials.apiToken ? `${credentials.apiToken.substring(0, 20)}...` : 'NOT SET');
+      console.log('- Account ID:', credentials.accountId || 'NOT SET');
+      console.log('- Base URL:', credentials.baseUrl || 'NOT SET');
+      
       // Set up API client configuration in PropertiesService
       global.PropertiesService.getScriptProperties().setProperties({
         'QUANTIVE_API_TOKEN': credentials.apiToken,
         'QUANTIVE_ACCOUNT_ID': credentials.accountId
       });
 
-      // Create API client
+      // Create API client with custom base URL from credentials
       apiClient = new QuantiveApiClient(credentials.apiToken, credentials.accountId);
+      apiClient.baseUrl = credentials.baseUrl;
       
       console.log('✅ Integration test setup complete');
       

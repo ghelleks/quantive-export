@@ -14,6 +14,12 @@ const { getCredentialManager } = require('./credentials');
 // Load the Google Apps Script code
 const { loadGoogleAppsScriptCode } = require('./code-loader');
 
+// Add missing Utilities.sleep mock
+global.Utilities = global.Utilities || {};
+if (!global.Utilities.sleep) {
+  global.Utilities.sleep = jest.fn();
+}
+
 // Load Code.gs after mocks are set up
 try {
   console.log('🔄 Loading Code.gs classes from test-specific-setup.js...');

@@ -101,7 +101,7 @@
 
 const APP_CONFIG = {
   // Quantive API Configuration
-  QUANTIVE_BASE_URL: 'https://api.quantive.com/v1',
+  QUANTIVE_BASE_URL: 'https://app.us.quantive.com/results/api',
   API_TIMEOUT: 30000, // 30 seconds
   MAX_RETRIES: 3,
   RETRY_DELAY: 1000, // 1 second
