@@ -43,7 +43,7 @@ class CredentialManager {
       this.credentials = {
         apiToken: config.QUANTIVE_API_TOKEN,
         accountId: config.QUANTIVE_ACCOUNT_ID,
-        baseUrl: 'https://app.us.quantive.com/results/api/v1', // Use consistent test URL
+        baseUrl: config.QUANTIVE_BASE_URL || 'https://app.us.quantive.com/results/api/v1',
         testSessionName: config.SESSION_ID, // Use SESSION_ID as test session
         testSessionUuid: null, // Will be resolved dynamically
         invalidSessionName: 'NonexistentTestSession',

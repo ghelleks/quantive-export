@@ -1,93 +1,93 @@
 /**
  * Quantive Session Snapshot & Summary Generator
  * Google Apps Script for generating periodic reports from Quantive API
- * 
+ *
  * SYSTEM ARCHITECTURE & DATA FLOW
  * ===============================
- * 
+ *
  * This system provides automated Quantive (OKR platform) reporting with the following architecture:
- * 
+ *
  * 1. DATA ACQUISITION LAYER
  *    ├── QuantiveApiClient: Secure API communication with retry logic
  *    ├── ConfigManager: Encrypted credential and settings management
  *    └── Authentication: Bearer token + Account ID header system
- * 
- * 2. DATA PROCESSING LAYER  
+ *
+ * 2. DATA PROCESSING LAYER
  *    ├── DataProcessor: Analytics engine for progress calculations
  *    ├── DataTransformUtils: Data transformation and formatting utilities
  *    └── Business Logic: Status categorization and insights generation
- * 
+ *
  * 3. REPORTING LAYER
  *    ├── GoogleDocsReportGenerator: Formatted document creation
  *    ├── GoogleSheetsReportGenerator: Tabular data and historical tracking
  *    └── Multi-format output with consistent data structure
- * 
+ *
  * 4. AUTOMATION LAYER
  *    ├── TriggerManager: Scheduled execution management
  *    ├── ExecutionLogger: Monitoring and debugging capabilities
  *    └── ErrorHandler: Resilient error handling and recovery
- * 
+ *
  * 5. TESTING & VALIDATION LAYER
  *    ├── TestSuite: Unit testing for all components
  *    ├── IntegrationTestSuite: End-to-end workflow validation
  *    └── PerformanceTestSuite: Execution time and resource optimization
- * 
+ *
  * DATA FLOW SEQUENCE
  * ==================
- * 
+ *
  * 1. INITIALIZATION
  *    • ConfigManager validates required properties (API token, account ID, session ID)
  *    • QuantiveApiClient instantiated with authenticated headers
  *    • Target output destination verified (Google Doc or Sheet)
- * 
+ *
  * 2. DATA FETCHING
  *    • Fetch session metadata from /sessions/{id} endpoint
  *    • Retrieve all objectives for session from /objectives?sessionId={id}
  *    • For each objective, fetch key results from /key-results?objectiveId={id}
  *    • Apply retry logic with exponential backoff for resilience
- * 
+ *
  * 3. DATA PROCESSING
  *    • Transform raw API responses into structured objects (Session → Objectives → Key Results)
  *    • Calculate overall progress weighted by key result completion
  *    • Categorize statuses and generate counts (On Track, At Risk, Behind, etc.)
  *    • Identify recently updated items based on configurable lookback period
  *    • Generate intelligent insights and recommendations
- * 
+ *
  * 4. REPORT GENERATION
  *    • Compile ReportSummary with processed analytics
  *    • Generate formatted output based on configuration:
  *      - Google Docs: Multi-section document with tables and formatting
  *      - Google Sheets: Historical data row with 15 tracked metrics
  *    • Apply consistent styling and formatting rules
- * 
- * 5. ERROR HANDLING & LOGGING  
+ *
+ * 5. ERROR HANDLING & LOGGING
  *    • Classify errors by type (network, authentication, rate limit, server)
  *    • Apply appropriate retry strategies and fallback mechanisms
  *    • Generate detailed execution logs for monitoring and debugging
  *    • Preserve partial data in case of non-critical failures
- * 
+ *
  * CONFIGURATION REQUIREMENTS
  * ==========================
- * 
+ *
  * Required Properties (stored securely in PropertiesService):
  * - QUANTIVE_API_TOKEN: Authentication token from Quantive settings
  * - QUANTIVE_ACCOUNT_ID: Account identifier for multi-tenant API access
  * - SESSION_ID: Target session UUID to analyze and report on
- * 
+ *
  * Optional Properties:
  * - GOOGLE_DOC_ID: Target document ID for formatted reports
  * - GOOGLE_SHEET_ID: Target spreadsheet ID for historical data tracking
  * - LOOKBACK_DAYS: Number of days to consider for "recent activity" (default: 7)
- * 
+ *
  * DEPLOYMENT & USAGE
  * ==================
- * 
+ *
  * 1. Configure properties using setupConfiguration() function
- * 2. Test connectivity with testConfiguration() function  
+ * 2. Test connectivity with testConfiguration() function
  * 3. Run manual report with generateQuantiveReport() function
  * 4. Set up automation with TriggerManager.setupTimeDrivenTrigger()
  * 5. Monitor execution with logs and error handling reports
- * 
+ *
  * @version 1.0
  * @author Generated with Claude Code
  * @see project-requirements.md for detailed functional requirements
@@ -101,7 +101,7 @@
 
 const APP_CONFIG = {
   // Quantive API Configuration
-  QUANTIVE_BASE_URL: 'https://app.us.quantive.com/results/api',
+  QUANTIVE_BASE_URL: 'https://app.us.quantive.com/results/api/v1',
   API_TIMEOUT: 30000, // 30 seconds
   MAX_RETRIES: 3,
   RETRY_DELAY: 1000, // 1 second
@@ -136,18 +136,18 @@ const APP_CONFIG = {
 
 /**
  * Represents a Quantive Session with objectives and metadata
- * 
+ *
  * A Session is a time-bounded container for Objectives and Key Results,
  * typically representing a quarterly or annual planning period.
- * 
+ *
  * @param {Object} data - Session data from Quantive API
  * @param {string} data.id - Unique session identifier
- * @param {string} data.name - Session display name  
+ * @param {string} data.name - Session display name
  * @param {string} data.description - Session description
  * @param {string} data.startDate - ISO date string for session start
  * @param {string} data.endDate - ISO date string for session end
  * @param {string} data.status - Session status (ACTIVE, COMPLETED, DRAFT, etc.)
- * 
+ *
  * @example
  * const session = new QuantiveSession({
  *   id: 'session-123',
@@ -179,10 +179,10 @@ class QuantiveSession {
 
 /**
  * Represents a Quantive Objective with key results and progress tracking
- * 
+ *
  * An Objective is a qualitative, ambitious goal that provides direction
  * and is measured by quantitative Key Results.
- * 
+ *
  * @param {Object} data - Objective data from Quantive API
  * @param {string} data.id - Unique objective identifier
  * @param {string} data.name - Objective title/name
@@ -191,7 +191,7 @@ class QuantiveSession {
  * @param {string} data.status - Current status (ON_TRACK, AT_RISK, BEHIND, COMPLETED, NOT_STARTED)
  * @param {number} [data.progress=0] - Progress percentage (0-100)
  * @param {string} [data.lastUpdated] - ISO date string of last update
- * 
+ *
  * @example
  * const objective = new QuantiveObjective({
  *   id: 'obj-123',
@@ -226,10 +226,10 @@ class QuantiveObjective {
 
 /**
  * Represents a Quantive Key Result with measurable progress tracking
- * 
+ *
  * A Key Result is a measurable outcome that demonstrates progress toward
  * achieving an Objective. It includes current/target values and progress.
- * 
+ *
  * @param {Object} data - Key Result data from Quantive API
  * @param {string} data.id - Unique key result identifier
  * @param {string} data.name - Key result title/name
@@ -242,7 +242,7 @@ class QuantiveObjective {
  * @param {number} [data.progress=0] - Calculated progress percentage (0-100)
  * @param {string} [data.lastUpdated] - ISO date string of last update
  * @param {string} data.objectiveId - ID of parent objective
- * 
+ *
  * @example
  * const keyResult = new QuantiveKeyResult({
  *   id: 'kr-456',
@@ -299,10 +299,10 @@ class QuantiveKeyResult {
 
 /**
  * Represents a compiled summary report of Quantive session data
- * 
+ *
  * Contains processed analytics, progress calculations, and insights
  * generated from session objectives and key results data.
- * 
+ *
  * @example
  * const summary = new ReportSummary();
  * summary.sessionInfo = sessionData;
@@ -340,21 +340,21 @@ class ReportSummary {
 
 /**
  * Configuration Manager for secure handling of script properties and settings
- * 
+ *
  * Manages all configuration values using Google Apps Script's PropertiesService
  * for secure storage of API credentials and user settings. All sensitive data
  * is stored encrypted and never exposed in the script code.
- * 
+ *
  * Required Configuration Properties:
  * - QUANTIVE_API_TOKEN: Your Quantive API authentication token
- * - QUANTIVE_ACCOUNT_ID: Your Quantive account identifier  
+ * - QUANTIVE_ACCOUNT_ID: Your Quantive account identifier
  * - SESSION_ID: Target session ID to analyze
- * 
+ *
  * Optional Configuration Properties:
  * - GOOGLE_DOC_ID: Target Google Doc ID for formatted reports
  * - GOOGLE_SHEET_ID: Target Google Sheet ID for tabular data
  * - LOOKBACK_DAYS: Number of days to look back for recent activity (default: 7)
- * 
+ *
  * @example Setup Configuration
  * // Set required properties
  * ConfigManager.setProperties({
@@ -364,7 +364,7 @@ class ReportSummary {
  *   'GOOGLE_DOC_ID': 'optional-google-doc-id',
  *   'LOOKBACK_DAYS': '7'
  * });
- * 
+ *
  * @see https://developers.google.com/apps-script/guides/properties
  */
 class ConfigManager {
@@ -408,11 +408,21 @@ class ConfigManager {
       throw new Error('CONFIG not found. Please create config.gs file from config.example.gs template.');
     }
     
+    // Validate required configuration
+    if (!CONFIG.QUANTIVE_API_TOKEN || CONFIG.QUANTIVE_API_TOKEN.trim() === '' || CONFIG.QUANTIVE_API_TOKEN === 'your-actual-api-token-here') {
+      throw new Error('QUANTIVE_API_TOKEN is required in config.gs. Please set your actual API token.');
+    }
+    
+    if (!CONFIG.QUANTIVE_ACCOUNT_ID || CONFIG.QUANTIVE_ACCOUNT_ID.trim() === '' || CONFIG.QUANTIVE_ACCOUNT_ID === 'your-actual-account-id-here') {
+      throw new Error('QUANTIVE_ACCOUNT_ID is required in config.gs. Please set your actual account ID.');
+    }
+    
     const environment = CONFIG.ENVIRONMENT || 'production';
     
     return {
       apiToken: CONFIG.QUANTIVE_API_TOKEN,
       accountId: CONFIG.QUANTIVE_ACCOUNT_ID,
+      baseUrl: CONFIG.QUANTIVE_BASE_URL || APP_CONFIG.QUANTIVE_BASE_URL,
       sessionId: this.resolveSessionId(CONFIG.SESSION_ID),
       googleDocId: CONFIG.GOOGLE_DOC_ID || '',
       googleSheetId: CONFIG.GOOGLE_SHEET_ID || '',
@@ -471,6 +481,9 @@ class ConfigManager {
     // Validate account ID format
     this.validateAccountId(config.accountId);
     
+    // Validate JWT token contains matching account ID
+    this.validateJwtAccountMatch(config.apiToken, config.accountId);
+    
     // Validate session ID format
     this.validateSessionId(config.sessionId);
     
@@ -502,6 +515,82 @@ class ConfigManager {
     // Basic format validation - most API tokens contain alphanumeric characters and some symbols
     if (!/^[A-Za-z0-9\-_\.]+$/.test(token)) {
       Logger.log('Warning: API token contains unexpected characters, please verify it is correct');
+    }
+    
+    // Validate JWT token if it looks like one
+    if (token.includes('.') && token.split('.').length === 3) {
+      this.validateJwtToken(token);
+    }
+  }
+  
+  /**
+   * Validate JWT token format and expiration
+   * @param {string} token - JWT token to validate
+   * @throws {Error} If JWT token is invalid or expired
+   */
+  static validateJwtToken(token) {
+    try {
+      const tokenParts = token.split('.');
+      if (tokenParts.length !== 3) {
+        throw new Error('Invalid JWT format');
+      }
+      
+      const payload = JSON.parse(Utilities.newBlob(Utilities.base64Decode(tokenParts[1])).getDataAsString());
+      const now = Math.floor(Date.now() / 1000);
+      
+      // Check expiration
+      if (payload.exp && now > payload.exp) {
+        const expiredMinutes = Math.floor((now - payload.exp) / 60);
+        throw new Error(`JWT token expired ${expiredMinutes} minutes ago. Please generate a new token.`);
+      }
+      
+      // Check if issued too far in future (clock skew)
+      if (payload.iat && payload.iat > now + 300) {
+        const futureMinutes = Math.floor((payload.iat - now) / 60);
+        throw new Error(`JWT token issued ${futureMinutes} minutes in the future. Check system clock.`);
+      }
+      
+      // Warn if expires soon (within 1 hour)
+      if (payload.exp && (payload.exp - now) < 3600) {
+        const expiresInMinutes = Math.floor((payload.exp - now) / 60);
+        Logger.log(`⚠️ JWT token expires in ${expiresInMinutes} minutes. Consider refreshing soon.`);
+      }
+      
+    } catch (e) {
+      if (e.message.includes('expired') || e.message.includes('future') || e.message.includes('Invalid JWT')) {
+        throw e;
+      }
+      Logger.log(`Warning: Could not validate JWT token: ${e.message}`);
+    }
+  }
+  
+  /**
+   * Validate JWT token account ID matches configuration
+   * @param {string} token - JWT token
+   * @param {string} accountId - Configured account ID
+   * @throws {Error} If account IDs don't match
+   */
+  static validateJwtAccountMatch(token, accountId) {
+    if (!token.includes('.') || token.split('.').length !== 3) {
+      return; // Not a JWT token, skip validation
+    }
+    
+    try {
+      const tokenParts = token.split('.');
+      const payload = JSON.parse(Utilities.newBlob(Utilities.base64Decode(tokenParts[1])).getDataAsString());
+      
+      const jwtAccountId = payload['https://quantive.com/app_metadata/accountId'] || 
+                          payload['https://gtmhub.com/app_metadata/accountId'];
+      
+      if (jwtAccountId && jwtAccountId !== accountId) {
+        throw new Error(`Account ID mismatch: JWT token contains '${jwtAccountId}' but configuration uses '${accountId}'. Please use matching account ID or regenerate token.`);
+      }
+      
+    } catch (e) {
+      if (e.message.includes('Account ID mismatch')) {
+        throw e;
+      }
+      Logger.log(`Warning: Could not validate JWT account match: ${e.message}`);
     }
   }
   
@@ -553,16 +642,23 @@ class ConfigManager {
       throw new Error('Session identifier must be a non-empty string');
     }
 
-    // Check if it's already a UUID format
+    // Check if it's already a valid session ID format
     const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const objectIdPattern = /^[0-9a-f]{24}$/i; // MongoDB ObjectId format
+    
     if (uuidPattern.test(sessionIdentifier)) {
       Logger.log('Session identifier is already a UUID, using as-is');
       return sessionIdentifier;
     }
+    
+    if (objectIdPattern.test(sessionIdentifier)) {
+      Logger.log('Session identifier is already an ObjectId, using as-is');
+      return sessionIdentifier;
+    }
 
     // Check for placeholder values
-    if (sessionIdentifier === 'your-session-name-here' || 
-        sessionIdentifier === 'your-session-id-here' || 
+    if (sessionIdentifier === 'your-session-name-here' ||
+        sessionIdentifier === 'your-session-id-here' ||
         sessionIdentifier === 'your-session-uuid-here') {
       throw new Error('Please replace the placeholder session identifier with your actual session name or ID');
     }
@@ -580,7 +676,7 @@ class ConfigManager {
       }
 
       // Create API client instance for session lookup
-      const apiClient = new QuantiveApiClient(CONFIG.QUANTIVE_API_TOKEN, CONFIG.QUANTIVE_ACCOUNT_ID);
+      const apiClient = new QuantiveApiClient(CONFIG.QUANTIVE_API_TOKEN, CONFIG.QUANTIVE_ACCOUNT_ID, CONFIG.QUANTIVE_BASE_URL);
       
       // Fetch all sessions to find matching name
       const sessions = apiClient.getSessions();
@@ -603,7 +699,7 @@ class ConfigManager {
           .map(session => session.name)
           .slice(0, 10); // Limit to first 10 for readability
         
-        const namesList = availableNames.length > 0 
+        const namesList = availableNames.length > 0
           ? `Available session names: ${availableNames.join(', ')}${sessions.length > 10 ? '...' : ''}`
           : 'No sessions with names found';
         
@@ -635,36 +731,36 @@ class ConfigManager {
 
 /**
  * Quantive API Client for authenticated HTTP requests and data fetching
- * 
+ *
  * Provides a robust interface to the Quantive (formerly Gtmhub) REST API with
  * comprehensive error handling, rate limiting, and automatic retry mechanisms.
- * 
+ *
  * Authentication:
  * - Uses Bearer token authentication with API token
  * - Requires X-Account-Id header for multi-tenant support
  * - Supports both production and staging environments
- * 
+ *
  * Features:
  * - Exponential backoff retry logic for resilient API calls
  * - Comprehensive HTTP status code handling and error classification
  * - Built-in rate limiting protection with intelligent backoff
  * - Request/response logging for debugging and monitoring
  * - Automatic JSON parsing with validation
- * 
+ *
  * Supported API Endpoints:
  * - Sessions: /sessions/{id} - Retrieve session details
- * - Objectives: /objectives?sessionId={id} - List session objectives  
+ * - Objectives: /objectives?sessionId={id} - List session objectives
  * - Key Results: /key-results?objectiveId={id} - List objective key results
- * 
+ *
  * Rate Limits (as of API v1.0):
  * - 1000 requests per hour per account
  * - 10 requests per second burst limit
  * - 429 status code returned when limits exceeded
- * 
+ *
  * @example Basic Usage
  * const client = new QuantiveApiClient('your-api-token', 'your-account-id');
  * const sessionData = await client.getCompleteSessionData('session-123');
- * 
+ *
  * @example Error Handling
  * try {
  *   const data = await client.makeRequest('/sessions/invalid-id');
@@ -673,7 +769,7 @@ class ConfigManager {
  *     console.log('Session not found');
  *   }
  * }
- * 
+ *
  * @see https://developers.quantive.com/api/v1/reference
  * @see https://developers.quantive.com/api/authentication
  */
@@ -683,16 +779,60 @@ class QuantiveApiClient {
    * Constructor
    * @param {string} apiToken - Quantive API token
    * @param {string} accountId - Quantive account ID
+   * @param {string} [baseUrl] - Optional custom base URL (overrides default)
    */
-  constructor(apiToken, accountId) {
+  constructor(apiToken, accountId, baseUrl = null) {
     this.apiToken = apiToken;
     this.accountId = accountId;
-    this.baseUrl = APP_CONFIG.QUANTIVE_BASE_URL;
+    this.baseUrl = baseUrl || APP_CONFIG.QUANTIVE_BASE_URL;
+    
+    // Debug: Log account ID value and JWT payload
+    Logger.log(`QuantiveApiClient initialized with Account ID: "${accountId}" (type: ${typeof accountId})`);
+    
+    // Debug JWT token payload using GAS base64 decode
+    try {
+      const tokenParts = apiToken.split('.');
+      if (tokenParts.length === 3) {
+        const payload = JSON.parse(Utilities.newBlob(Utilities.base64Decode(tokenParts[1])).getDataAsString());
+        
+        // Check token expiration
+        const now = Math.floor(Date.now() / 1000);
+        const issuedAt = payload.iat;
+        const expiresAt = payload.exp;
+        
+        Logger.log(`JWT audience: ${payload.aud || 'not set'}`);
+        Logger.log(`JWT issued at: ${issuedAt} (${new Date(issuedAt * 1000).toISOString()})`);
+        Logger.log(`JWT expires at: ${expiresAt ? expiresAt + ' (' + new Date(expiresAt * 1000).toISOString() + ')' : 'not set'}`);
+        Logger.log(`Current time: ${now} (${new Date(now * 1000).toISOString()})`);
+        
+        if (expiresAt && now > expiresAt) {
+          Logger.log(`⚠️ JWT TOKEN EXPIRED! Expired ${Math.floor((now - expiresAt) / 60)} minutes ago`);
+        } else if (issuedAt > now + 300) { // More than 5 minutes in future
+          Logger.log(`⚠️ JWT TOKEN ISSUED IN FUTURE! Check system clock. Token issued ${Math.floor((issuedAt - now) / 60)} minutes from now`);
+        }
+        
+        Logger.log(`JWT gtmhub account: ${payload['https://gtmhub.com/app_metadata/accountId'] || 'not set'}`);
+        Logger.log(`JWT quantive account: ${payload['https://quantive.com/app_metadata/accountId'] || 'not set'}`);
+        
+        // Validate account ID matches JWT claims
+        const jwtAccountId = payload['https://quantive.com/app_metadata/accountId'] || payload['https://gtmhub.com/app_metadata/accountId'];
+        if (jwtAccountId && jwtAccountId !== accountId) {
+          Logger.log(`⚠️ ACCOUNT ID MISMATCH: JWT contains '${jwtAccountId}' but using '${accountId}'`);
+        }
+      }
+    } catch (e) {
+      Logger.log(`Could not decode JWT: ${e.message}`);
+    }
+    
+    if (!accountId || accountId.trim() === '') {
+      throw new Error('Account ID is required and cannot be empty');
+    }
+    
     this.headers = {
       'Authorization': `Bearer ${apiToken}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'X-Account-Id': accountId
+      'X-Account-ID': accountId
     };
   }
   
@@ -706,6 +846,10 @@ class QuantiveApiClient {
    */
   makeRequest(endpoint, method = 'GET', payload = null) {
     const url = `${this.baseUrl}${endpoint}`;
+    
+    // Debug logging
+    Logger.log(`Making ${method} request to: ${url}`);
+    Logger.log(`Headers: ${JSON.stringify(this.headers, null, 2)}`);
     
     const options = {
       method: method,
@@ -763,6 +907,7 @@ class QuantiveApiClient {
     const responseText = response.getContentText();
     
     Logger.log(`Response from ${url}: ${statusCode}`);
+    Logger.log(`Response body: ${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}`);
     
     // Handle rate limiting
     if (statusCode === 429) {
@@ -818,7 +963,8 @@ class QuantiveApiClient {
    */
   testConnection() {
     try {
-      // Test with a simple endpoint - account info or sessions list
+      // Test with a simple endpoint - sessions list
+      Logger.log('Testing API connection with sessions endpoint...');
       const response = this.makeRequest('/sessions', 'GET');
       Logger.log('API connection test successful');
       return true;
@@ -1088,10 +1234,10 @@ class DataProcessor {
 
 /**
  * Utility functions for data transformation and formatting
- * 
+ *
  * Provides a comprehensive set of static utility methods for transforming,
  * formatting, and manipulating data throughout the reporting pipeline.
- * 
+ *
  * Key Features:
  * - Progress and percentage formatting with locale support
  * - Date formatting with multiple output formats
@@ -1099,21 +1245,21 @@ class DataProcessor {
  * - Text truncation with intelligent ellipsis placement
  * - Priority-based sorting algorithms for key results
  * - Status mapping and normalization utilities
- * 
+ *
  * Design Principles:
  * - All methods are static for performance and simplicity
  * - Defensive programming with null/undefined handling
  * - Consistent return types and error handling
  * - Locale-aware formatting where applicable
- * 
+ *
  * @example Progress Formatting
  * DataTransformUtils.formatProgress(75.67); // "76%"
  * DataTransformUtils.formatProgress(null);   // "0%"
- * 
+ *
  * @example Date Formatting
  * const date = new Date('2024-06-15');
  * DataTransformUtils.formatDate(date); // "Jun 15, 2024"
- * 
+ *
  * @example Value Formatting
  * DataTransformUtils.formatValueWithUnit(1500, '$');     // "$1,500"
  * DataTransformUtils.formatValueWithUnit(85.5, 'users'); // "85.5 users"
@@ -1387,8 +1533,8 @@ class GoogleDocsReportGenerator {
     
     for (const [status, count] of sortedStatuses) {
       const emoji = this.getStatusEmoji(status);
-      const percentage = reportSummary.totalKeyResults > 0 
-        ? Math.round((count / reportSummary.totalKeyResults) * 100) 
+      const percentage = reportSummary.totalKeyResults > 0
+        ? Math.round((count / reportSummary.totalKeyResults) * 100)
         : 0;
       statusList.appendListItem(`${emoji} ${status}: ${count} (${percentage}%)`);
     }
@@ -1760,25 +1906,25 @@ class GoogleSheetsReportGenerator {
 
 /**
  * Trigger Management System for automated report generation
- * 
+ *
  * Manages Google Apps Script time-driven triggers to automate periodic
  * execution of Quantive report generation. Supports daily, weekly, and
  * monthly scheduling with flexible timing configuration.
- * 
+ *
  * Key Features:
  * - Automatic cleanup of existing triggers before creating new ones
  * - Persistent storage of trigger configuration in script properties
  * - Support for multiple scheduling frequencies with timezone handling
  * - Comprehensive trigger lifecycle management and monitoring
- * 
+ *
  * @example Setup Weekly Reports
  * // Run every Monday at 9 AM
  * const triggerId = TriggerManager.setupTimeDrivenTrigger('weekly', 9, 1);
- * 
- * @example Setup Monthly Reports  
+ *
+ * @example Setup Monthly Reports
  * // Run on the 1st of each month at 8 AM
  * const triggerId = TriggerManager.setupTimeDrivenTrigger('monthly', 8, null, 1);
- * 
+ *
  * @see https://developers.google.com/apps-script/guides/triggers/installable
  */
 class TriggerManager {
@@ -2088,7 +2234,7 @@ function generateQuantiveReport() {
     Logger.log('Configuration validated successfully');
     
     // Initialize API client
-    const apiClient = new QuantiveApiClient(config.apiToken, config.accountId);
+    const apiClient = new QuantiveApiClient(config.apiToken, config.accountId, config.baseUrl);
     
     // Test API connectivity
     apiClient.testConnection();
@@ -2149,6 +2295,178 @@ function generateQuantiveReport() {
 }
 
 /**
+ * Test different API endpoints to find the correct region
+ */
+function testEndpoints() {
+  const config = ConfigManager.getConfig();
+  
+  // Test various endpoint and API version combinations
+  const endpointVariations = [
+    // Original endpoints with /results/api/v1
+    'https://app.quantive.com/results/api/v1',      // EU
+    'https://app.us.quantive.com/results/api/v1',   // US
+    'https://app.as.quantive.com/results/api/v1',   // Asia
+    'https://app.sa.quantive.com/results/api/v1',   // South America
+    'https://app.au.quantive.com/results/api/v1',   // Australia
+    
+    // Try different API versions
+    'https://app.quantive.com/results/api',         // Without v1
+    'https://app.us.quantive.com/results/api',      // US without v1
+    'https://api.quantive.com/v1',                  // Different subdomain
+    'https://api.us.quantive.com/v1',               // US API subdomain
+    
+    // Legacy GTMHub endpoints (in case of compatibility)
+    'https://app.gtmhub.com/api/v1',                // Legacy GTMHub
+    'https://api.gtmhub.com/v1',                    // Legacy API
+    
+    // Try with different paths
+    'https://app.quantive.com/api/v1',              // Without results path
+    'https://app.us.quantive.com/api/v1'            // US without results path
+  ];
+  
+  Logger.log(`Testing ${endpointVariations.length} endpoint variations...`);
+  
+  for (const endpoint of endpointVariations) {
+    try {
+      Logger.log(`\n🔍 Testing endpoint: ${endpoint}`);
+      
+      // Create temporary client with this endpoint
+      const client = new QuantiveApiClient(config.apiToken, config.accountId, endpoint);
+      
+      // Try a simple request
+      const response = client.makeRequest('/sessions', 'GET');
+      Logger.log(`✅ SUCCESS with ${endpoint}`);
+      Logger.log(`Response: ${JSON.stringify(response).substring(0, 200)}...`);
+      Logger.log(`🎉 WORKING ENDPOINT FOUND: ${endpoint}`);
+      return endpoint;
+      
+    } catch (error) {
+      Logger.log(`❌ Failed with ${endpoint}: ${error.message}`);
+      
+      // Log specific error details for diagnosis
+      if (error.message.includes('signature is invalid')) {
+        Logger.log(`   → Signature validation issue (possible API version mismatch)`);
+      } else if (error.message.includes('404')) {
+        Logger.log(`   → Endpoint not found (wrong URL path)`);
+      } else if (error.message.includes('empty or invalid account id')) {
+        Logger.log(`   → Account ID issue (possible header format mismatch)`);
+      } else if (error.message.includes('403')) {
+        Logger.log(`   → Forbidden (permissions issue)`);
+      }
+    }
+  }
+  
+  Logger.log('\n❌ No working endpoint found from any variation');
+  Logger.log('💡 Suggestions:');
+  Logger.log('   1. Check with Quantive support for the correct API endpoint for your region');
+  Logger.log('   2. Verify your account region in Quantive settings');
+  Logger.log('   3. Check if API access is enabled for your account');
+  Logger.log('   4. Try logging into Quantive web interface and check the URL domain');
+  
+  return null;
+}
+
+/**
+ * Check your Quantive account region and suggest the correct endpoint
+ */
+function checkAccountRegion() {
+  Logger.log('🌍 QUANTIVE ACCOUNT REGION CHECKER');
+  Logger.log('==========================================');
+  Logger.log('');
+  Logger.log('To find your correct API endpoint:');
+  Logger.log('');
+  Logger.log('1. 🌐 Log into your Quantive account in a web browser');
+  Logger.log('2. 👀 Look at the URL in your browser address bar');
+  Logger.log('3. 📍 Check which domain you see:');
+  Logger.log('');
+  Logger.log('   • https://app.quantive.com     → Use: https://app.quantive.com/results/api/v1');
+  Logger.log('   • https://app.us.quantive.com  → Use: https://app.us.quantive.com/results/api/v1');
+  Logger.log('   • https://app.as.quantive.com  → Use: https://app.as.quantive.com/results/api/v1');
+  Logger.log('   • https://app.sa.quantive.com  → Use: https://app.sa.quantive.com/results/api/v1');
+  Logger.log('   • https://app.au.quantive.com  → Use: https://app.au.quantive.com/results/api/v1');
+  Logger.log('   • https://app.gtmhub.com       → Use: https://app.gtmhub.com/api/v1');
+  Logger.log('');
+  Logger.log('4. 🔧 Update your APP_CONFIG.QUANTIVE_BASE_URL if needed');
+  Logger.log('');
+  Logger.log('💡 Pro tip: Run testEndpoints() to automatically test all variations!');
+}
+
+/**
+ * Update the base URL for your region
+ * @param {string} newBaseUrl - The new base URL to use
+ */
+function updateBaseUrl(newBaseUrl) {
+  if (!newBaseUrl) {
+    Logger.log('❌ Error: Please provide a base URL');
+    Logger.log('Example: updateBaseUrl("https://app.us.quantive.com/results/api/v1")');
+    return false;
+  }
+  
+  // Validate URL format
+  if (!newBaseUrl.includes('quantive.com') && !newBaseUrl.includes('gtmhub.com')) {
+    Logger.log('❌ Error: URL should contain quantive.com or gtmhub.com');
+    return false;
+  }
+  
+  Logger.log(`🔄 Updating base URL to: ${newBaseUrl}`);
+  
+  try {
+    // Update the APP_CONFIG (note: this only affects the current execution)
+    APP_CONFIG.QUANTIVE_BASE_URL = newBaseUrl;
+    
+    // Test the new URL
+    Logger.log('🧪 Testing new URL...');
+    const config = ConfigManager.getConfig();
+    const client = new QuantiveApiClient(config.apiToken, config.accountId, newBaseUrl);
+    
+    const response = client.makeRequest('/sessions', 'GET');
+    Logger.log('✅ SUCCESS! New URL is working');
+    Logger.log(`Response: ${JSON.stringify(response).substring(0, 100)}...`);
+    
+    Logger.log('');
+    Logger.log('🔧 To make this change permanent, update your Code.gs:');
+    Logger.log(`   Change QUANTIVE_BASE_URL to: '${newBaseUrl}'`);
+    Logger.log('   Around line 84 in the APP_CONFIG section');
+    
+    return true;
+    
+  } catch (error) {
+    Logger.log(`❌ Error: New URL failed: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Debug function to show exact configuration values
+ */
+function debugConfig() {
+  try {
+    Logger.log('=== CONFIG DEBUG ===');
+    
+    if (typeof CONFIG === 'undefined') {
+      Logger.log('❌ CONFIG is undefined');
+      return;
+    }
+    
+    Logger.log(`CONFIG object exists: ${typeof CONFIG}`);
+    Logger.log(`API Token (first 10 chars): ${CONFIG.QUANTIVE_API_TOKEN ? CONFIG.QUANTIVE_API_TOKEN.substring(0, 10) + '...' : 'UNDEFINED'}`);
+    Logger.log(`Account ID: "${CONFIG.QUANTIVE_ACCOUNT_ID}" (type: ${typeof CONFIG.QUANTIVE_ACCOUNT_ID}, length: ${CONFIG.QUANTIVE_ACCOUNT_ID ? CONFIG.QUANTIVE_ACCOUNT_ID.length : 'N/A'})`);
+    Logger.log(`Session ID: "${CONFIG.SESSION_ID}"`);
+    
+    // Test ConfigManager.getConfig()
+    Logger.log('=== TESTING ConfigManager.getConfig() ===');
+    const config = ConfigManager.getConfig();
+    Logger.log(`Processed Account ID: "${config.accountId}" (type: ${typeof config.accountId}, length: ${config.accountId ? config.accountId.length : 'N/A'})`);
+    
+    return config;
+    
+  } catch (error) {
+    Logger.log(`❌ Error in debugConfig: ${error.toString()}`);
+    throw error;
+  }
+}
+
+/**
  * Quick Start function - generates your first report
  * Make sure you have created config.gs from config.example.gs first!
  */
@@ -2204,7 +2522,7 @@ function testConfiguration() {
 function testApiConnection() {
   try {
     const config = ConfigManager.validateConfig();
-    const apiClient = new QuantiveApiClient(config.apiToken, config.accountId);
+    const apiClient = new QuantiveApiClient(config.apiToken, config.accountId, config.baseUrl);
     
     Logger.log('Testing API connection...');
     const result = apiClient.testConnection();
@@ -2265,7 +2583,7 @@ class ErrorHandler {
     const errorMessage = error.toString().toLowerCase();
     
     // Network/connectivity errors
-    if (errorMessage.includes('network') || errorMessage.includes('timeout') || 
+    if (errorMessage.includes('network') || errorMessage.includes('timeout') ||
         errorMessage.includes('connection') || errorMessage.includes('fetch')) {
       return {
         type: 'NETWORK_ERROR',
@@ -2286,7 +2604,7 @@ class ErrorHandler {
     }
     
     // Authentication errors
-    if (errorMessage.includes('authentication') || errorMessage.includes('401') || 
+    if (errorMessage.includes('authentication') || errorMessage.includes('401') ||
         errorMessage.includes('unauthorized')) {
       return {
         type: 'AUTH_ERROR',
@@ -2297,7 +2615,7 @@ class ErrorHandler {
     }
     
     // Permission errors
-    if (errorMessage.includes('forbidden') || errorMessage.includes('403') || 
+    if (errorMessage.includes('forbidden') || errorMessage.includes('403') ||
         errorMessage.includes('permission')) {
       return {
         type: 'PERMISSION_ERROR',
@@ -2328,7 +2646,7 @@ class ErrorHandler {
     }
     
     // Google Apps Script quota/execution time
-    if (errorMessage.includes('quota') || errorMessage.includes('execution time') || 
+    if (errorMessage.includes('quota') || errorMessage.includes('execution time') ||
         errorMessage.includes('script runtime')) {
       return {
         type: 'QUOTA_ERROR',
@@ -2339,7 +2657,7 @@ class ErrorHandler {
     }
     
     // Parse/format errors
-    if (errorMessage.includes('parse') || errorMessage.includes('json') || 
+    if (errorMessage.includes('parse') || errorMessage.includes('json') ||
         errorMessage.includes('format')) {
       return {
         type: 'PARSE_ERROR',
@@ -2581,14 +2899,14 @@ class ResilientExecutor {
           timestamp: new Date().toISOString()
         });
         
-        ErrorHandler.logDetailedError(error, context, { 
-          attempt: retryCount + 1, 
-          maxRetries: maxRetries + 1 
+        ErrorHandler.logDetailedError(error, context, {
+          attempt: retryCount + 1,
+          maxRetries: maxRetries + 1
         });
         
-        const handleResult = ErrorHandler.handleError(error, context, { 
-          retryCount: retryCount, 
-          maxRetries: maxRetries 
+        const handleResult = ErrorHandler.handleError(error, context, {
+          retryCount: retryCount,
+          maxRetries: maxRetries
         });
         
         if (handleResult.action === 'retry' && retryCount < maxRetries) {
@@ -2807,7 +3125,7 @@ class TestSuite {
       }
       
       // Test API client creation
-      const apiClient = new QuantiveApiClient(config.apiToken, config.accountId);
+      const apiClient = new QuantiveApiClient(config.apiToken, config.accountId, config.baseUrl);
       
       if (!apiClient || !apiClient.apiToken || !apiClient.accountId) {
         throw new Error('API client creation failed');
@@ -3278,7 +3596,7 @@ class IntegrationTestSuite {
       Logger.log(`Running E2E test with ${useRealData ? 'real' : 'mock'} data...`);
       
       // Step 1: Test API client initialization
-      const apiClient = new QuantiveApiClient(config.apiToken, config.accountId);
+      const apiClient = new QuantiveApiClient(config.apiToken, config.accountId, config.baseUrl);
       
       // Step 2: Test connectivity
       if (useRealData) {
@@ -4008,7 +4326,7 @@ class PerformanceTestSuite {
               return 'SKIPPED - No API credentials configured';
             }
             
-            const apiClient = new QuantiveApiClient(config.apiToken, config.accountId);
+            const apiClient = new QuantiveApiClient(config.apiToken, config.accountId, config.baseUrl);
             
             // Verify rate limiting configuration exists
             if (!APP_CONFIG.MAX_RETRIES || !APP_CONFIG.RETRY_DELAY) {
@@ -4094,7 +4412,7 @@ class PerformanceTestSuite {
           
           // Create large dataset
           const largeSessionData = this.createLargeSessionData(
-            datasetSize.objectives, 
+            datasetSize.objectives,
             datasetSize.keyResults
           );
           

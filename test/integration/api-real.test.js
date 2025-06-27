@@ -63,8 +63,7 @@ describe('Real Quantive API Integration Tests', () => {
       });
 
       // Create API client with custom base URL from credentials
-      apiClient = new QuantiveApiClient(credentials.apiToken, credentials.accountId);
-      apiClient.baseUrl = credentials.baseUrl;
+      apiClient = new QuantiveApiClient(credentials.apiToken, credentials.accountId, credentials.baseUrl);
       
       console.log('✅ Integration test setup complete');
       
@@ -216,7 +215,7 @@ describe('Real Quantive API Integration Tests', () => {
       }
 
       // Create API client with very short timeout
-      const timeoutClient = new QuantiveApiClient(credentials.apiToken, credentials.accountId);
+      const timeoutClient = new QuantiveApiClient(credentials.apiToken, credentials.accountId, credentials.baseUrl);
       
       // This test might be flaky depending on network conditions
       // We're mainly verifying the error handling structure exists
@@ -238,7 +237,7 @@ describe('Real Quantive API Integration Tests', () => {
       }
 
       // Create API client with invalid token
-      const invalidClient = new QuantiveApiClient('invalid-token', credentials.accountId);
+      const invalidClient = new QuantiveApiClient('invalid-token', credentials.accountId, credentials.baseUrl);
       
       expect(async () => {
         await invalidClient.getSessions();
