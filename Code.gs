@@ -990,7 +990,7 @@ class QuantiveApiClient {
    * @returns {Array} Array of objectives
    */
   getObjectives(sessionId) {
-    const response = this.makeRequest(`/sessions/${sessionId}/objectives`, 'GET');
+    const response = this.makeRequest(`/goals?sessionId=${sessionId}`, 'GET');
     // Quantive API may return objectives wrapped in an 'items' property
     return response.items || response || [];
   }
@@ -1011,7 +1011,7 @@ class QuantiveApiClient {
    * @returns {Array} Array of key results
    */
   getKeyResults(objectiveId) {
-    const response = this.makeRequest(`/objectives/${objectiveId}/key-results`, 'GET');
+    const response = this.makeRequest(`/metrics?goalId=${objectiveId}`, 'GET');
     // Quantive API may return key results wrapped in an 'items' property
     return response.items || response || [];
   }

@@ -184,7 +184,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
       const result = apiClient.getObjectives(sessionId);
       
       expect(global.UrlFetchApp.fetch).toHaveBeenCalledWith(
-        `https://app.us.quantive.com/results/api/v1/sessions/${sessionId}/objectives`,
+        `https://app.us.quantive.com/results/api/v1/goals?sessionId=${sessionId}`,
         expect.objectContaining({
           method: 'GET'
         })
@@ -271,7 +271,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
       const result = apiClient.getKeyResults(objectiveId);
       
       expect(global.UrlFetchApp.fetch).toHaveBeenCalledWith(
-        `https://app.us.quantive.com/results/api/v1/objectives/${objectiveId}/key-results`,
+        `https://app.us.quantive.com/results/api/v1/metrics?goalId=${objectiveId}`,
         expect.objectContaining({
           method: 'GET'
         })
