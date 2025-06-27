@@ -687,16 +687,17 @@ class ConfigManager {
 
       Logger.log(`Found ${sessions.length} sessions, searching for "${sessionIdentifier}"`);
 
-      // Search for session by name (case-insensitive)
+      // Search for session by name/title (case-insensitive)
       const matchingSession = sessions.find(session => {
-        return session.name && session.name.toLowerCase() === sessionIdentifier.toLowerCase();
+        const sessionName = session.title || session.name;
+        return sessionName && sessionName.toLowerCase() === sessionIdentifier.toLowerCase();
       });
 
       if (!matchingSession) {
         // Provide helpful error with available session names
         const availableNames = sessions
-          .filter(session => session.name)
-          .map(session => session.name)
+          .filter(session => session.title || session.name)
+          .map(session => session.title || session.name)
           .slice(0, 10); // Limit to first 10 for readability
         
         const namesList = availableNames.length > 0
@@ -989,7 +990,9 @@ class QuantiveApiClient {
    * @returns {Array} Array of objectives
    */
   getObjectives(sessionId) {
-    return this.makeRequest(`/sessions/${sessionId}/objectives`, 'GET');
+    const response = this.makeRequest(`/sessions/${sessionId}/objectives`, 'GET');
+    // Quantive API may return objectives wrapped in an 'items' property
+    return response.items || response || [];
   }
   
   /**
@@ -997,7 +1000,9 @@ class QuantiveApiClient {
    * @returns {Array} Array of session objects
    */
   getSessions() {
-    return this.makeRequest('/sessions', 'GET');
+    const response = this.makeRequest('/sessions', 'GET');
+    // Quantive API returns sessions wrapped in an 'items' property
+    return response.items || response || [];
   }
   
   /**
@@ -1006,7 +1011,9 @@ class QuantiveApiClient {
    * @returns {Array} Array of key results
    */
   getKeyResults(objectiveId) {
-    return this.makeRequest(`/objectives/${objectiveId}/key-results`, 'GET');
+    const response = this.makeRequest(`/objectives/${objectiveId}/key-results`, 'GET');
+    // Quantive API may return key results wrapped in an 'items' property
+    return response.items || response || [];
   }
   
   /**
