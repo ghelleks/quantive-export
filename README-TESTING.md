@@ -71,7 +71,7 @@ Create `.env.test` with these values:
 # Real Quantive API credentials for testing
 QUANTIVE_API_TOKEN=qtv_your_real_test_token
 QUANTIVE_ACCOUNT_ID=your_test_account_id
-QUANTIVE_BASE_URL=https://api.quantive.com/v1
+QUANTIVE_BASE_URL=https://app.us.quantive.com/results/api
 
 # Test session identifiers (must exist in your test account)
 TEST_SESSION_NAME=Test Session Q4 2024

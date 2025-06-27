@@ -4,7 +4,7 @@
   "description": "Automated OKR reporting from Quantive to Google Workspace",
   "main": "Code.gs",
   "scripts": {
-    "test": "jest --projects unit integration",
+    "test": "jest",
     "test:unit": "jest --selectProjects unit",
     "test:integration": "jest --selectProjects integration",
     "test:api": "jest test/integration --runInBand",

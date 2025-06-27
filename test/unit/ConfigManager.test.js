@@ -142,7 +142,7 @@ describe('ConfigManager - Unit Tests', () => {
       test('should reject short API token', () => {
         expect(() => {
           ConfigManager.validateApiToken('short');
-        }).toThrow('API token appears to be invalid');
+        }).toThrow('API token appears to be too short');
       });
     });
 

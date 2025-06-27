@@ -832,7 +832,7 @@ class QuantiveApiClient {
       'Authorization': `Bearer ${apiToken}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'X-Account-ID': accountId
+      'gtmhub-accountId': accountId
     };
   }
   
@@ -2294,77 +2294,6 @@ function generateQuantiveReport() {
   }
 }
 
-/**
- * Test different API endpoints to find the correct region
- */
-function testEndpoints() {
-  const config = ConfigManager.getConfig();
-  
-  // Test various endpoint and API version combinations
-  const endpointVariations = [
-    // Original endpoints with /results/api/v1
-    'https://app.quantive.com/results/api/v1',      // EU
-    'https://app.us.quantive.com/results/api/v1',   // US
-    'https://app.as.quantive.com/results/api/v1',   // Asia
-    'https://app.sa.quantive.com/results/api/v1',   // South America
-    'https://app.au.quantive.com/results/api/v1',   // Australia
-    
-    // Try different API versions
-    'https://app.quantive.com/results/api',         // Without v1
-    'https://app.us.quantive.com/results/api',      // US without v1
-    'https://api.quantive.com/v1',                  // Different subdomain
-    'https://api.us.quantive.com/v1',               // US API subdomain
-    
-    // Legacy GTMHub endpoints (in case of compatibility)
-    'https://app.gtmhub.com/api/v1',                // Legacy GTMHub
-    'https://api.gtmhub.com/v1',                    // Legacy API
-    
-    // Try with different paths
-    'https://app.quantive.com/api/v1',              // Without results path
-    'https://app.us.quantive.com/api/v1'            // US without results path
-  ];
-  
-  Logger.log(`Testing ${endpointVariations.length} endpoint variations...`);
-  
-  for (const endpoint of endpointVariations) {
-    try {
-      Logger.log(`\n🔍 Testing endpoint: ${endpoint}`);
-      
-      // Create temporary client with this endpoint
-      const client = new QuantiveApiClient(config.apiToken, config.accountId, endpoint);
-      
-      // Try a simple request
-      const response = client.makeRequest('/sessions', 'GET');
-      Logger.log(`✅ SUCCESS with ${endpoint}`);
-      Logger.log(`Response: ${JSON.stringify(response).substring(0, 200)}...`);
-      Logger.log(`🎉 WORKING ENDPOINT FOUND: ${endpoint}`);
-      return endpoint;
-      
-    } catch (error) {
-      Logger.log(`❌ Failed with ${endpoint}: ${error.message}`);
-      
-      // Log specific error details for diagnosis
-      if (error.message.includes('signature is invalid')) {
-        Logger.log(`   → Signature validation issue (possible API version mismatch)`);
-      } else if (error.message.includes('404')) {
-        Logger.log(`   → Endpoint not found (wrong URL path)`);
-      } else if (error.message.includes('empty or invalid account id')) {
-        Logger.log(`   → Account ID issue (possible header format mismatch)`);
-      } else if (error.message.includes('403')) {
-        Logger.log(`   → Forbidden (permissions issue)`);
-      }
-    }
-  }
-  
-  Logger.log('\n❌ No working endpoint found from any variation');
-  Logger.log('💡 Suggestions:');
-  Logger.log('   1. Check with Quantive support for the correct API endpoint for your region');
-  Logger.log('   2. Verify your account region in Quantive settings');
-  Logger.log('   3. Check if API access is enabled for your account');
-  Logger.log('   4. Try logging into Quantive web interface and check the URL domain');
-  
-  return null;
-}
 
 /**
  * Check your Quantive account region and suggest the correct endpoint
@@ -2388,7 +2317,7 @@ function checkAccountRegion() {
   Logger.log('');
   Logger.log('4. 🔧 Update your APP_CONFIG.QUANTIVE_BASE_URL if needed');
   Logger.log('');
-  Logger.log('💡 Pro tip: Run testEndpoints() to automatically test all variations!');
+  Logger.log('💡 Pro tip: Use testApiConnection() to verify your endpoint is working correctly!');
 }
 
 /**

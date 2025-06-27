@@ -68,7 +68,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
         'Authorization': 'Bearer test-token-123',
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'X-Account-ID': 'test-account-456'
+        'gtmhub-accountId': 'test-account-456'
       });
     });
   });
@@ -206,7 +206,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
       
       expect(options.headers['Authorization']).toBe('Bearer test-token-123');
       expect(options.headers['Content-Type']).toBe('application/json');
-      expect(options.headers['X-Account-ID']).toBe('test-account-456');
+      expect(options.headers['gtmhub-accountId']).toBe('test-account-456');
     });
 
     test('should use correct base URL', () => {
