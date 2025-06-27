@@ -4,8 +4,9 @@ const fs = require('fs');
 /**
  * Credential Management for Testing
  * 
- * Securely loads and validates test credentials from .env.test file
+ * Securely loads and validates test credentials from config.gs file
  * Provides safe defaults and skip mechanisms when credentials unavailable
+ * This ensures integration tests use the same credential source as production
  */
 class CredentialManager {
   constructor() {
@@ -18,32 +19,40 @@ class CredentialManager {
   }
 
   loadCredentials() {
-    const envPath = path.join(__dirname, '../../.env.test');
+    const configPath = path.join(__dirname, '../../config.gs');
     
-    if (!fs.existsSync(envPath)) {
-      console.warn('⚠️  .env.test file not found. Integration tests will be skipped.');
-      console.warn('   Run: npm run setup:test');
+    if (!fs.existsSync(configPath)) {
+      console.warn('⚠️  config.gs file not found. Integration tests will be skipped.');
+      console.warn('   Create config.gs from config.example.gs template');
       this.isLoaded = false;
       return;
     }
 
     try {
-      // Load environment variables from .env.test
-      require('dotenv').config({ path: envPath });
+      // Load and evaluate config.gs file
+      const configContent = fs.readFileSync(configPath, 'utf8');
+      
+      // Execute the config file to get CONFIG object
+      const configCode = new Function(`${configContent}; return CONFIG;`);
+      const config = configCode();
+      
+      if (!config) {
+        throw new Error('CONFIG object not found in config.gs');
+      }
       
       this.credentials = {
-        apiToken: process.env.QUANTIVE_API_TOKEN,
-        accountId: process.env.QUANTIVE_ACCOUNT_ID,
-        baseUrl: process.env.QUANTIVE_BASE_URL || 'https://api.quantive.com/v1',
-        testSessionName: process.env.TEST_SESSION_NAME,
-        testSessionUuid: process.env.TEST_SESSION_UUID,
-        invalidSessionName: process.env.INVALID_SESSION_NAME,
-        skipApiTests: process.env.SKIP_API_TESTS === 'true',
-        apiTestTimeout: parseInt(process.env.API_TEST_TIMEOUT) || 10000
+        apiToken: config.QUANTIVE_API_TOKEN,
+        accountId: config.QUANTIVE_ACCOUNT_ID,
+        baseUrl: 'https://app.us.quantive.com/results/api/v1', // Use consistent test URL
+        testSessionName: config.SESSION_ID, // Use SESSION_ID as test session
+        testSessionUuid: null, // Will be resolved dynamically
+        invalidSessionName: 'NonexistentTestSession',
+        skipApiTests: false, // Always run integration tests when config.gs exists
+        apiTestTimeout: 10000
       };
       
       this.isLoaded = true;
-      console.log('✅ Credentials loaded from .env.test');
+      console.log('✅ Credentials loaded from config.gs');
       
     } catch (error) {
       console.error('❌ Error loading credentials:', error.message);
@@ -75,7 +84,7 @@ class CredentialManager {
     }
 
     if (this.credentials.skipApiTests) {
-      console.log('🚫 API tests disabled via SKIP_API_TESTS=true');
+      console.log('🚫 API tests disabled via skipApiTests flag');
       this.hasValidCredentials = false;
       return;
     }
@@ -92,7 +101,7 @@ class CredentialManager {
     if (!this.hasValidCredentials) {
       throw new Error(
         'Real credentials required for this test. ' +
-        'Please set up .env.test with valid credentials and set SKIP_API_TESTS=false'
+        'Please set up config.gs with valid credentials from config.example.gs template'
       );
     }
     return this.getCredentials();

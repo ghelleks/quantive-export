@@ -2,7 +2,7 @@
  * Integration Tests with Real Quantive API
  * 
  * These tests make actual API calls to Quantive using real credentials
- * They will be skipped if credentials are not available or SKIP_API_TESTS=true
+ * They will be skipped if credentials are not available in config.gs
  */
 
 const { requireRealCredentials, canRunIntegrationTests, getTestSessionData, getApiClientConfig } = require('../setup/credentials');
@@ -51,7 +51,7 @@ describe('Real Quantive API Integration Tests', () => {
       credentials = requireRealCredentials();
       testSessionData = getTestSessionData();
       
-      console.log('🔍 Debug: Loaded credentials from .env.test:');
+      console.log('🔍 Debug: Loaded credentials from config.gs:');
       console.log('- API Token:', credentials.apiToken ? `${credentials.apiToken.substring(0, 20)}...` : 'NOT SET');
       console.log('- Account ID:', credentials.accountId || 'NOT SET');
       console.log('- Base URL:', credentials.baseUrl || 'NOT SET');

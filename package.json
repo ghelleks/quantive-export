@@ -11,7 +11,7 @@
     "test:watch": "jest --selectProjects unit --watch",
     "test:coverage": "jest --coverage --selectProjects unit",
     "test:all": "npm run test:unit && npm run test:integration",
-    "setup:test": "cp .env.test.example .env.test && echo 'Please edit .env.test with real credentials'",
+    "setup:test": "cp config.example.gs config.gs && echo 'Please edit config.gs with real credentials'",
     "lint": "eslint Code.gs test/",
     "pretest": "node test/setup/check-credentials.js"
   },

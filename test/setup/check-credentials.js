@@ -4,6 +4,7 @@
  * Pre-test credential checker
  * 
  * Runs before tests to validate credential setup and provide helpful guidance
+ * Now checks config.gs instead of .env.test for unified credential management
  */
 
 const { getCredentialManager } = require('./credentials');
@@ -15,19 +16,19 @@ function checkCredentialSetup() {
 
   const credManager = getCredentialManager();
   
-  // Check if .env.test file exists
-  const envPath = path.join(__dirname, '../../.env.test');
-  if (!fs.existsSync(envPath)) {
-    console.log('❌ .env.test file not found');
-    console.log('   📝 Run: npm run setup:test');
-    console.log('   📝 Then edit .env.test with real credentials\n');
+  // Check if config.gs file exists
+  const configPath = path.join(__dirname, '../../config.gs');
+  if (!fs.existsSync(configPath)) {
+    console.log('❌ config.gs file not found');
+    console.log('   📝 Create config.gs from config.example.gs template');
+    console.log('   📝 Then edit config.gs with real credentials\n');
     
     console.log('ℹ️  Unit tests will run with mocked data');
     console.log('ℹ️  Integration tests will be skipped\n');
     return;
   }
 
-  console.log('✅ .env.test file found');
+  console.log('✅ config.gs file found');
 
   // Check credential validity
   if (credManager.canRunIntegrationTests()) {
@@ -56,12 +57,12 @@ function checkCredentialSetup() {
     }
     
     if (creds.skipApiTests) {
-      console.log('   - SKIP_API_TESTS=true in .env.test');
+      console.log('   - API tests disabled via skipApiTests flag');
     }
     
     console.log('\n📝 To enable integration tests:');
-    console.log('   1. Edit .env.test with real test credentials');
-    console.log('   2. Set SKIP_API_TESTS=false');
+    console.log('   1. Edit config.gs with real test credentials');
+    console.log('   2. Replace placeholder values with actual credentials');
     console.log('   3. Ensure you have test sessions in your Quantive account');
   }
 
