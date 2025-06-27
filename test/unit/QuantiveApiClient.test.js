@@ -6,38 +6,42 @@
 
 const mockResponses = require('../fixtures/mock-responses.json');
 
-// Mock UrlFetchApp for controlled responses
-let mockResponse = null;
-
-global.UrlFetchApp = {
-  fetch: jest.fn((url, options) => {
-    if (mockResponse) {
+// Override UrlFetchApp mock (replaces gas-mock-globals version)
+beforeAll(() => {
+  global.UrlFetchApp = {
+    fetch: jest.fn((url, options) => {
+      // Check for test-specific mock response
+      if (global.mockResponse) {
+        return {
+          getResponseCode: () => global.mockResponse.status || 200,
+          getContentText: () => typeof global.mockResponse.data === 'string' 
+            ? global.mockResponse.data 
+            : JSON.stringify(global.mockResponse.data || []),
+          getHeaders: () => global.mockResponse.headers || {},
+          getAllHeaders: () => global.mockResponse.headers || {}
+        };
+      }
+      
+      // Default successful response for unit tests
       return {
-        getResponseCode: () => mockResponse.status,
-        getContentText: () => typeof mockResponse.data === 'string' 
-          ? mockResponse.data 
-          : JSON.stringify(mockResponse.data),
-        getHeaders: () => mockResponse.headers || {},
-        getAllHeaders: () => mockResponse.headers || {}
+        getResponseCode: () => 200,
+        getContentText: () => JSON.stringify([]),
+        getHeaders: () => ({}),
+        getAllHeaders: () => ({})
       };
-    }
-    
-    // Default response
-    return {
-      getResponseCode: () => 200,
-      getContentText: () => JSON.stringify([]),
-      getHeaders: () => ({}),
-      getAllHeaders: () => ({})
-    };
-  })
-};
+    })
+  };
+});
 
 describe('QuantiveApiClient - Unit Tests', () => {
   let apiClient;
 
   beforeEach(() => {
     jest.resetAllMocks();
-    mockResponse = null;
+    global.mockResponse = null;
+    
+    // Reset the UrlFetchApp mock
+    global.UrlFetchApp.fetch.mockClear();
     
     // Create API client instance
     apiClient = new QuantiveApiClient('test-token-123', 'test-account-456');
@@ -51,6 +55,9 @@ describe('QuantiveApiClient - Unit Tests', () => {
     });
 
     test('should set up request headers correctly', () => {
+      // Set up a mock response to avoid API call errors
+      global.mockResponse = mockResponses.successfulSessionsList;
+      
       // Call a method to trigger request setup
       apiClient.getSessions();
       
@@ -60,6 +67,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
       expect(options.headers).toEqual({
         'Authorization': 'Bearer test-token-123',
         'Content-Type': 'application/json',
+        'Accept': 'application/json',
         'X-Account-ID': 'test-account-456'
       });
     });
@@ -67,7 +75,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
 
   describe('getSessions() method', () => {
     test('should make correct API call for sessions', () => {
-      mockResponse = mockResponses.successfulSessionsList;
+      global.mockResponse = mockResponses.successfulSessionsList;
       
       const result = apiClient.getSessions();
       
@@ -85,7 +93,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
     });
 
     test('should return empty array for empty response', () => {
-      mockResponse = mockResponses.emptySessionsList;
+      global.mockResponse = mockResponses.emptySessionsList;
       
       const result = apiClient.getSessions();
       
@@ -93,7 +101,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
     });
 
     test('should handle successful response with multiple sessions', () => {
-      mockResponse = mockResponses.successfulSessionsList;
+      global.mockResponse = mockResponses.successfulSessionsList;
       
       const result = apiClient.getSessions();
       
@@ -106,7 +114,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
 
   describe('Error Handling', () => {
     test('should handle 401 unauthorized error', () => {
-      mockResponse = mockResponses.unauthorizedError;
+      global.mockResponse = mockResponses.unauthorizedError;
       
       expect(() => {
         apiClient.getSessions();
@@ -114,7 +122,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
     });
 
     test('should handle 404 not found error', () => {
-      mockResponse = mockResponses.notFoundError;
+      global.mockResponse = mockResponses.notFoundError;
       
       expect(() => {
         apiClient.getSessions();
@@ -122,7 +130,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
     });
 
     test('should handle 500 server error', () => {
-      mockResponse = mockResponses.serverError;
+      global.mockResponse = mockResponses.serverError;
       
       expect(() => {
         apiClient.getSessions();
@@ -130,7 +138,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
     });
 
     test('should handle malformed JSON response', () => {
-      mockResponse = {
+      global.mockResponse = {
         status: 200,
         data: 'invalid json {'
       };
@@ -144,7 +152,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
   describe('getSession() method', () => {
     test('should make correct API call for individual session', () => {
       const sessionId = '12345678-abcd-1234-efgh-123456789012';
-      mockResponse = {
+      global.mockResponse = {
         status: 200,
         data: { id: sessionId, name: 'Test Session' }
       };
@@ -165,7 +173,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
   describe('getObjectives() method', () => {
     test('should make correct API call for session objectives', () => {
       const sessionId = '12345678-abcd-1234-efgh-123456789012';
-      mockResponse = {
+      global.mockResponse = {
         status: 200,
         data: [
           { id: 'obj1', title: 'Objective 1' },
@@ -223,7 +231,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
   describe('Response Processing', () => {
     test('should parse JSON response correctly', () => {
       const testData = [{ id: '1', name: 'Test' }];
-      mockResponse = {
+      global.mockResponse = {
         status: 200,
         data: testData
       };
@@ -234,7 +242,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
     });
 
     test('should handle empty response data', () => {
-      mockResponse = {
+      global.mockResponse = {
         status: 200,
         data: null
       };
@@ -255,7 +263,7 @@ describe('QuantiveApiClient - Unit Tests', () => {
 
     test('should handle getKeyResults method', () => {
       const objectiveId = 'obj-123';
-      mockResponse = {
+      global.mockResponse = {
         status: 200,
         data: [{ id: 'kr1', title: 'Key Result 1' }]
       };

@@ -20,6 +20,8 @@ if (!global.Utilities.sleep) {
   global.Utilities.sleep = jest.fn();
 }
 
+// Note: UrlFetchApp mock will be set up in individual test files
+
 // Load Code.gs after mocks are set up
 try {
   console.log('🔄 Loading Code.gs classes from test-specific-setup.js...');
