@@ -163,13 +163,13 @@ class QuantiveSession {
     /** @type {string} Unique session identifier */
     this.id = data.id;
     /** @type {string} Session display name */
-    this.name = data.name;
+    this.name = data.title || data.name; // Quantive API uses 'title' field
     /** @type {string} Session description */
     this.description = data.description;
     /** @type {Date} Session start date */
-    this.startDate = new Date(data.startDate);
+    this.startDate = new Date(data.start || data.startDate);
     /** @type {Date} Session end date */
-    this.endDate = new Date(data.endDate);
+    this.endDate = new Date(data.end || data.endDate);
     /** @type {string} Current session status */
     this.status = data.status;
     /** @type {QuantiveObjective[]} Array of objectives within this session */
@@ -1027,7 +1027,9 @@ class QuantiveApiClient {
       
       // Get session info
       const sessionData = this.getSession(sessionId);
+      Logger.log(`Raw session data: ${JSON.stringify(sessionData, null, 2)}`);
       const session = new QuantiveSession(sessionData);
+      Logger.log(`Processed session - Name: "${session.name}", Start: ${session.startDate}, End: ${session.endDate}`);
       
       // Get objectives
       const objectivesData = this.getObjectives(sessionId);
@@ -1289,11 +1291,30 @@ class DataTransformUtils {
    */
   static formatDate(date) {
     if (!date) return 'N/A';
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
+    
+    // Handle invalid Date objects
+    if (date instanceof Date && isNaN(date.getTime())) {
+      return 'Invalid Date';
+    }
+    
+    // If it's a string, try to parse it
+    if (typeof date === 'string') {
+      const parsedDate = new Date(date);
+      if (isNaN(parsedDate.getTime())) {
+        return 'Invalid Date';
+      }
+      date = parsedDate;
+    }
+    
+    try {
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      return 'Invalid Date';
+    }
   }
   
   /**
@@ -1500,11 +1521,12 @@ class GoogleDocsReportGenerator {
     const info = reportSummary.sessionInfo;
     
     const details = [
-      ['Session ID', info.id],
+      ['Session Name', info.name || 'N/A'],
       ['Description', DataTransformUtils.truncateText(info.description, 200) || 'N/A'],
       ['Start Date', DataTransformUtils.formatDate(info.startDate)],
       ['End Date', DataTransformUtils.formatDate(info.endDate)],
-      ['Status', info.status || 'N/A']
+      ['Status', info.status || 'N/A'],
+      ['Session ID', info.id]
     ];
     
     // Create a simple table-like format
