@@ -1478,12 +1478,11 @@ class GoogleDocsReportGenerator {
     
     // Status breakdown
     this.body.appendParagraph('').appendText('Status Breakdown:').setBold(true);
-    const statusList = this.body.appendList();
     
     for (const [status, count] of Object.entries(reportSummary.statusCounts)) {
       if (count > 0) {
         const statusEmoji = this.getStatusEmoji(status);
-        statusList.appendListItem(`${statusEmoji} ${status}: ${count} key results`);
+        this.body.appendParagraph(`• ${statusEmoji} ${status}: ${count} key results`).setIndentStart(20);
       }
     }
     
@@ -1534,7 +1533,6 @@ class GoogleDocsReportGenerator {
     // Detailed status counts
     this.body.appendParagraph('Key Results by Status:').getChild(0).asText().setBold(true);
     
-    const statusList = this.body.appendList();
     const sortedStatuses = Object.entries(reportSummary.statusCounts)
       .sort(([,a], [,b]) => b - a); // Sort by count descending
     
@@ -1543,7 +1541,7 @@ class GoogleDocsReportGenerator {
       const percentage = reportSummary.totalKeyResults > 0
         ? Math.round((count / reportSummary.totalKeyResults) * 100)
         : 0;
-      statusList.appendListItem(`${emoji} ${status}: ${count} (${percentage}%)`);
+      this.body.appendParagraph(`• ${emoji} ${status}: ${count} (${percentage}%)`).setIndentStart(20);
     }
     
     this.body.appendParagraph(''); // Spacing
@@ -1569,16 +1567,14 @@ class GoogleDocsReportGenerator {
     const sortedKRs = [...reportSummary.recentlyUpdatedKRs]
       .sort((a, b) => new Date(b.lastUpdated) - new Date(a.lastUpdated));
     
-    const activityList = this.body.appendList();
-    
     for (const kr of sortedKRs.slice(0, 10)) { // Limit to top 10
       const statusEmoji = this.getStatusEmoji(kr.status);
       const progress = DataTransformUtils.formatProgress(kr.progress);
       const lastUpdated = DataTransformUtils.formatDate(new Date(kr.lastUpdated));
       
-      activityList.appendListItem(
-        `${statusEmoji} ${DataTransformUtils.truncateText(kr.name, 60)} (${progress}) - Updated ${lastUpdated}`
-      );
+      this.body.appendParagraph(
+        `• ${statusEmoji} ${DataTransformUtils.truncateText(kr.name, 60)} (${progress}) - Updated ${lastUpdated}`
+      ).setIndentStart(20);
     }
     
     if (reportSummary.recentlyUpdatedKRs.length > 10) {
@@ -1604,10 +1600,8 @@ class GoogleDocsReportGenerator {
       return;
     }
     
-    const insightsList = this.body.appendList();
-    
     for (const insight of insights) {
-      insightsList.appendListItem(insight);
+      this.body.appendParagraph(`• ${insight}`).setIndentStart(20);
     }
     
     this.body.appendParagraph(''); // Spacing
@@ -2705,10 +2699,9 @@ class ErrorHandler {
       body.appendHorizontalRule();
       
       body.appendParagraph('Errors Encountered:').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-      const errorList = body.appendList();
       
       for (const error of errors) {
-        errorList.appendListItem(`${error.context}: ${error.message}`);
+        body.appendParagraph(`• ${error.context}: ${error.message}`).setIndentStart(20);
       }
       
       // Add any partial data that was collected
@@ -2718,11 +2711,10 @@ class ErrorHandler {
       }
       
       body.appendParagraph('Next Steps:').setHeading(DocumentApp.ParagraphHeading.HEADING2);
-      const stepsList = body.appendList();
-      stepsList.appendListItem('Review configuration settings (API token, session ID)');
-      stepsList.appendListItem('Check Quantive API status and permissions');
-      stepsList.appendListItem('Verify Google Apps Script execution limits');
-      stepsList.appendListItem('Check execution logs for detailed error information');
+      body.appendParagraph('• Review configuration settings (API token, session ID)').setIndentStart(20);
+      body.appendParagraph('• Check Quantive API status and permissions').setIndentStart(20);
+      body.appendParagraph('• Verify Google Apps Script execution limits').setIndentStart(20);
+      body.appendParagraph('• Check execution logs for detailed error information').setIndentStart(20);
       
       doc.saveAndClose();
       const url = doc.getUrl();
