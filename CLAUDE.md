@@ -180,3 +180,10 @@ Run `ConfigManager.validateConfig()` after setup to verify all credentials and s
 - Session name to UUID resolution
 - Environment-specific settings
 - Performance optimizations for large datasets
+
+## Development Philosophy
+
+### Testing Approach
+- Write the test before you write the feature or user experience
+- There should never be a user experience that does not have a corresponding test
+- The feature is not complete until the test passes

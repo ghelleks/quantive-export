@@ -27,8 +27,8 @@ const CONFIG = {
   // - Legacy GTMHub: 'https://app.gtmhub.com/api/v1'
   QUANTIVE_BASE_URL: 'https://app.us.quantive.com/results/api/v1',
   
-  // Target Session (name or UUID)
-  SESSION_ID: 'Q4 2024 OKRs',
+  // Target Session Name (e.g., "Q4 2024 OKRs")
+  SESSION_NAME: 'Q4 2024 OKRs',
   
   // Optional: Output Document IDs (leave empty to auto-create)
   GOOGLE_DOC_ID: '',      // Document ID from Google Docs URL
