@@ -20,6 +20,9 @@ const INTERNAL_CONFIG = {
   SPARKLINE_LENGTH: 10 // Number of points in sparkline
 };
 
+// User name cache to avoid duplicate API calls
+const USER_NAME_CACHE = {};
+
 /**
  * Main function - generates a Quantive report
  * Run this manually or set up a trigger to run it automatically
@@ -94,6 +97,12 @@ function getConfig() {
 function fetchUserDisplayName(userId, config) {
   if (!userId) return 'Unassigned';
   
+  // Check cache first
+  if (USER_NAME_CACHE[userId]) {
+    Logger.log(`👤 Using cached name for user ${userId}: ${USER_NAME_CACHE[userId]}`);
+    return USER_NAME_CACHE[userId];
+  }
+  
   const headers = {
     'Authorization': `Bearer ${config.apiToken}`,
     'Gtmhub-AccountId': config.accountId,
@@ -102,21 +111,127 @@ function fetchUserDisplayName(userId, config) {
   
   try {
     const userUrl = `${config.baseUrl}/users/${userId}`;
+    Logger.log(`👤 Fetching user details from: ${userUrl}`);
+    
     const userResponse = UrlFetchApp.fetch(userUrl, { 
       headers: headers,
       muteHttpExceptions: true 
     });
     
-    if (userResponse.getResponseCode() === 200) {
-      const userData = JSON.parse(userResponse.getContentText());
-      return userData.displayName || userData.name || userData.email || `User ${userId}`;
+    const responseCode = userResponse.getResponseCode();
+    const responseText = userResponse.getContentText();
+    
+    Logger.log(`👤 User API response for ${userId}: ${responseCode}`);
+    
+    if (responseCode === 200) {
+      const userData = JSON.parse(responseText);
+      Logger.log(`👤 User data structure: ${JSON.stringify(Object.keys(userData))}`);
+      
+      const displayName = userData.displayName || userData.name || userData.email || userData.firstName + ' ' + userData.lastName || `User ${userId}`;
+      Logger.log(`👤 Resolved user ${userId} to: ${displayName}`);
+      USER_NAME_CACHE[userId] = displayName;
+      return displayName;
     } else {
-      Logger.log(`⚠️ Could not fetch user ${userId}: ${userResponse.getResponseCode()}`);
-      return `User ${userId}`;
+      Logger.log(`⚠️ Could not fetch user ${userId}: ${responseCode} - ${responseText.substring(0, 200)}`);
+      
+      // Try alternative endpoint if the main one fails
+      const altUserUrl = `${config.baseUrl}/account/users/${userId}`;
+      Logger.log(`👤 Trying alternative user endpoint: ${altUserUrl}`);
+      
+      const altUserResponse = UrlFetchApp.fetch(altUserUrl, { 
+        headers: headers,
+        muteHttpExceptions: true 
+      });
+      
+      if (altUserResponse.getResponseCode() === 200) {
+        const userData = JSON.parse(altUserResponse.getContentText());
+        const displayName = userData.displayName || userData.name || userData.email || userData.firstName + ' ' + userData.lastName || `User ${userId}`;
+        Logger.log(`👤 Resolved user ${userId} via alternative endpoint to: ${displayName}`);
+        USER_NAME_CACHE[userId] = displayName;
+        return displayName;
+      } else {
+        Logger.log(`⚠️ Alternative user endpoint also failed for ${userId}: ${altUserResponse.getResponseCode()}`);
+        const fallbackName = `User ${userId}`;
+        USER_NAME_CACHE[userId] = fallbackName;
+        return fallbackName;
+      }
     }
   } catch (error) {
     Logger.log(`⚠️ Error fetching user ${userId}: ${error.message}`);
-    return `User ${userId}`;
+    const fallbackName = `User ${userId}`;
+    USER_NAME_CACHE[userId] = fallbackName;
+    return fallbackName;
+  }
+}
+
+/**
+ * Fetch progress history for a given metric (key result)
+ */
+function fetchProgressHistory(metricId, config) {
+  if (!metricId) return [];
+  
+  const headers = {
+    'Authorization': `Bearer ${config.apiToken}`,
+    'Gtmhub-AccountId': config.accountId,
+    'Content-Type': 'application/json'
+  };
+  
+  try {
+    // Calculate date range for sparkline history
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(endDate.getDate() - INTERNAL_CONFIG.SPARKLINE_DAYS);
+    
+    const startDateString = startDate.toISOString().split('T')[0];
+    const endDateString = endDate.toISOString().split('T')[0];
+    
+    const historyUrl = `${config.baseUrl}/metrics/${metricId}/values?from=${startDateString}&to=${endDateString}`;
+    Logger.log(`📈 Fetching progress history for metric ${metricId} from: ${historyUrl}`);
+    
+    const historyResponse = UrlFetchApp.fetch(historyUrl, { 
+      headers: headers,
+      muteHttpExceptions: true 
+    });
+    
+    if (historyResponse.getResponseCode() === 200) {
+      const historyResponseText = historyResponse.getContentText();
+      const historyData = JSON.parse(historyResponseText);
+      
+      // Handle different response formats
+      let progressEntries;
+      if (Array.isArray(historyData)) {
+        progressEntries = historyData;
+      } else if (historyData.items && Array.isArray(historyData.items)) {
+        progressEntries = historyData.items;
+      } else if (historyData.values && Array.isArray(historyData.values)) {
+        progressEntries = historyData.values;
+      } else if (historyData.data && Array.isArray(historyData.data)) {
+        progressEntries = historyData.data;
+      } else {
+        Logger.log(`⚠️ Unexpected progress history response format for metric ${metricId}: ${typeof historyData}`);
+        return [];
+      }
+      
+      // Transform entries to standardized format
+      const standardizedHistory = progressEntries.map(entry => ({
+        date: entry.date || entry.createdDate || entry.timestamp,
+        progress: entry.progress || entry.value || entry.percentage || 0
+      })).filter(entry => entry.date); // Only include entries with valid dates
+      
+      Logger.log(`✅ Found ${standardizedHistory.length} progress history entries for metric ${metricId}`);
+      return standardizedHistory;
+      
+    } else if (historyResponse.getResponseCode() === 404) {
+      // No history found - this is normal for new metrics
+      Logger.log(`📈 No progress history found for metric ${metricId} (404)`);
+      return [];
+    } else {
+      Logger.log(`⚠️ Could not fetch progress history for metric ${metricId}: ${historyResponse.getResponseCode()}`);
+      return [];
+    }
+  } catch (error) {
+    Logger.log(`⚠️ Error fetching progress history for metric ${metricId}: ${error.message}`);
+    return [];
   }
 }
 
@@ -162,14 +277,18 @@ function fetchTasksForMetric(metricId, config) {
       
       Logger.log(`✅ Found ${tasks.length} tasks for metric ${metricId}`);
       
-      // Fetch owner names for each task
+      // Fetch owner names for each task - try embedded first
       for (const task of tasks) {
-        if (task.ownerId) {
+        if (task.assignee && typeof task.assignee === 'object') {
+          task.ownerName = task.assignee.name || task.assignee.displayName || task.assignee.email || 'Unassigned';
+          Logger.log(`📊 Using embedded assignee name for task "${task.name}": ${task.ownerName}`);
+        } else if (task.owner && typeof task.owner === 'object') {
+          task.ownerName = task.owner.name || task.owner.displayName || task.owner.email || 'Unassigned';
+          Logger.log(`📊 Using embedded owner name for task "${task.name}": ${task.ownerName}`);
+        } else if (task.ownerId) {
           task.ownerName = fetchUserDisplayName(task.ownerId, config);
         } else if (task.assigneeId) {
           task.ownerName = fetchUserDisplayName(task.assigneeId, config);
-        } else if (task.assignee && typeof task.assignee === 'object') {
-          task.ownerName = task.assignee.name || task.assignee.displayName || 'Unassigned';
         } else {
           task.ownerName = 'Unassigned';
         }
@@ -376,7 +495,7 @@ function fetchSessionData(config) {
       // Add session context to each objective
       sessionObjectives.forEach(obj => {
         obj.sessionId = session.id;
-        obj.sessionName = session.name;
+        obj.sessionName = session.name || session.title;
       });
       
       Logger.log(`📋 Found ${sessionObjectives.length} objectives for session "${session.name}"`);
@@ -444,12 +563,18 @@ function fetchSessionData(config) {
           objective.progress = Math.round((goalData.attainment || 0) * 100); // attainment is 0-1, convert to percentage
           objective.status = goalData.closedStatus || objective.status;
           
-          // Extract owner information - fetch user display name
-          if (goalData.ownerId) {
+          // Extract owner information - try embedded first, then fetch user display name
+          if (goalData.assignee && typeof goalData.assignee === 'object') {
+            objective.ownerName = goalData.assignee.name || goalData.assignee.displayName || goalData.assignee.email || 'Unassigned';
+            Logger.log(`📊 Using embedded assignee name for objective "${objective.name}": ${objective.ownerName}`);
+          } else if (goalData.owner && typeof goalData.owner === 'object') {
+            objective.ownerName = goalData.owner.name || goalData.owner.displayName || goalData.owner.email || 'Unassigned';
+            Logger.log(`📊 Using embedded owner name for objective "${objective.name}": ${objective.ownerName}`);
+          } else if (goalData.ownerId) {
             objective.ownerId = goalData.ownerId;
             objective.ownerName = fetchUserDisplayName(goalData.ownerId, config);
-          } else if (goalData.assignee) {
-            objective.ownerName = goalData.assignee.name || goalData.assignee.displayName || 'Unassigned';
+          } else {
+            objective.ownerName = 'Unassigned';
           }
           
           // Ensure session information is preserved (sessionId exists in the response)
@@ -458,6 +583,12 @@ function fetchSessionData(config) {
           }
           
           Logger.log(`📊 Updated objective "${objective.name}" - Progress: ${objective.progress}%, Owner: ${objective.ownerName}, Status: ${objective.status}`);
+          
+          // Fetch progress history and generate sparkline for objective
+          Logger.log(`   📈 Fetching progress history for objective "${objective.name}" (ID: ${objective.id})`);
+          objective.progressHistory = fetchProgressHistory(objective.id, config);
+          objective.sparkline = generateSparkline(objective.progressHistory);
+          Logger.log(`   ✨ Generated sparkline for objective "${objective.name}": ${objective.sparkline}`);
           
           // Extract metrics from the correct field name
           if (goalData.metrics && Array.isArray(goalData.metrics)) {
@@ -508,11 +639,15 @@ function fetchSessionData(config) {
         Logger.log(`⚠️ Warning: Key Result "${kr.name}" has goalId ${kr.goalId} but fetched for objective ${objective.id}`);
       }
       
-      // Fetch owner information for the key result
-      if (kr.ownerId) {
+      // Fetch owner information for the key result - try embedded first
+      if (kr.owner && typeof kr.owner === 'object') {
+        kr.ownerName = kr.owner.name || kr.owner.displayName || kr.owner.email || 'Unassigned';
+        Logger.log(`📊 Using embedded owner name for KR "${kr.name}": ${kr.ownerName}`);
+      } else if (kr.assignee && typeof kr.assignee === 'object') {
+        kr.ownerName = kr.assignee.name || kr.assignee.displayName || kr.assignee.email || 'Unassigned';
+        Logger.log(`📊 Using embedded assignee name for KR "${kr.name}": ${kr.ownerName}`);
+      } else if (kr.ownerId) {
         kr.ownerName = fetchUserDisplayName(kr.ownerId, config);
-      } else if (kr.owner && typeof kr.owner === 'object') {
-        kr.ownerName = kr.owner.name || kr.owner.displayName || 'Unassigned';
       } else if (!kr.ownerName) {
         kr.ownerName = kr.objectiveOwner || 'Unassigned'; // Fallback to objective owner
       }
@@ -528,9 +663,11 @@ function fetchSessionData(config) {
         kr.tasks = [];
       }
       
-      // For now, skip sparkline fetching to focus on the main issue
-      kr.progressHistory = [];
-      kr.sparkline = '—';
+      // Fetch progress history and generate sparkline
+      Logger.log(`   📈 Fetching progress history for key result "${kr.name}" (ID: ${kr.id})`);
+      kr.progressHistory = fetchProgressHistory(kr.id, config);
+      kr.sparkline = generateSparkline(kr.progressHistory);
+      Logger.log(`   ✨ Generated sparkline for "${kr.name}": ${kr.sparkline}`);
     }
     
     allKeyResults.push(...keyResults);
@@ -571,7 +708,7 @@ function fetchSessionData(config) {
     keyResults: allKeyResults,
     // Summary stats for multi-session report
     sessionCount: sessions.length,
-    sessionNames: sessions.map(s => s.name).join(', ')
+    sessionNames: sessions.map(s => s.name || s.title).join(', ')
   };
 }
 
@@ -839,8 +976,9 @@ function writeReport(docId, data, stats, config) {
   const doc = DocumentApp.openById(docId);
   const body = doc.getBody();
   
-  // Clear existing content
-  body.clear();
+  // Clear existing content safely - simple approach
+  // Just replace all text with empty string, then work from there
+  body.replaceText('.*', '');
   
   // Title for multi-session reports
   const title = data.sessionCount > 1 
@@ -855,7 +993,7 @@ function writeReport(docId, data, stats, config) {
   if (data.sessionCount > 1) {
     body.appendParagraph(`Sessions included: ${data.sessionCount}`);
     data.sessions.forEach((session, index) => {
-      const sessionInfo = `   ${index + 1}. ${session.name} (ID: ${session.id})`;
+      const sessionInfo = `   ${index + 1}. ${session.name || session.title} (ID: ${session.id})`;
       const sessionParagraph = body.appendParagraph(sessionInfo);
       sessionParagraph.setFontSize(10);
       sessionParagraph.setForegroundColor('#666666');
@@ -996,8 +1134,11 @@ function writeReport(docId, data, stats, config) {
     
     const sessionInfo = data.sessionCount > 1 ? ` | Session: ${objective.sessionName}` : '';
     
+    // Add sparkline to objective if available
+    const objSparklineText = objective.sparkline && objective.sparkline !== '—' ? ` ${objective.sparkline}` : '';
+    
     // Create objective as list item
-    const objListItem = body.appendListItem(`${objective.name} (Progress: ${objProgress}% | Owner: ${objective.ownerName || 'Unassigned'}${sessionInfo})`);
+    const objListItem = body.appendListItem(`${objective.name} (Progress: ${objProgress}%${objSparklineText} | Owner: ${objective.ownerName || 'Unassigned'}${sessionInfo})`);
     objListItem.setGlyphType(DocumentApp.GlyphType.BULLET);
     
     // Apply nesting level for hierarchy
@@ -1024,7 +1165,8 @@ function writeReport(docId, data, stats, config) {
         const krProgress = kr.progress || kr.attainment * 100 || 0;
         const krOwner = kr.ownerName || kr.objectiveOwner || 'Unassigned';
         const krDescription = kr.description ? ` - ${kr.description}` : '';
-        const krText = `${kr.name} (Progress: ${Math.round(krProgress)}% | Owner: ${krOwner})${krDescription}`;
+        const sparklineText = kr.sparkline && kr.sparkline !== '—' ? ` ${kr.sparkline}` : '';
+        const krText = `${kr.name} (Progress: ${Math.round(krProgress)}%${sparklineText} | Owner: ${krOwner})${krDescription}`;
         
         const krListItem = body.appendListItem(krText);
         krListItem.setGlyphType(DocumentApp.GlyphType.HOLLOW_BULLET);
