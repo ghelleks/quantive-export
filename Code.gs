@@ -973,12 +973,50 @@ function generateSparkline(progressHistory) {
  * Write the report to a Google Doc
  */
 function writeReport(docId, data, stats, config) {
-  const doc = DocumentApp.openById(docId);
-  const body = doc.getBody();
+  Logger.log(`📄 Attempting to open Google Doc with ID: ${docId}`);
   
-  // Clear existing content safely - simple approach
-  // Just replace all text with empty string, then work from there
-  body.replaceText('.*', '');
+  let doc, body;
+  
+  try {
+    doc = DocumentApp.openById(docId);
+    Logger.log(`✅ Successfully opened document: ${doc.getName()}`);
+    body = doc.getBody();
+  } catch (docError) {
+    Logger.log(`❌ Failed to open document with ID: ${docId}`);
+    Logger.log(`Error details: ${docError.message}`);
+    
+    // Try to provide helpful suggestions
+    if (docError.message.includes('failed while accessing document')) {
+      Logger.log(`💡 Troubleshooting suggestions:`);
+      Logger.log(`   1. Verify the document ID in your config.gs file`);
+      Logger.log(`   2. Check that the document exists and is accessible`);
+      Logger.log(`   3. Ensure the Apps Script has permission to access the document`);
+      Logger.log(`   4. Try creating a new Google Doc and updating the GOOGLE_DOC_ID`);
+      
+      // Attempt to create a new document
+      Logger.log(`🔧 Attempting to create a new document...`);
+      try {
+        doc = DocumentApp.create('Quantive Report - ' + new Date().toDateString());
+        const newDocId = doc.getId();
+        Logger.log(`✅ Created new document with ID: ${newDocId}`);
+        Logger.log(`📝 Please update your config.gs with GOOGLE_DOC_ID: '${newDocId}'`);
+        Logger.log(`🔗 Document URL: ${doc.getUrl()}`);
+        
+        body = doc.getBody();
+      } catch (createError) {
+        Logger.log(`❌ Failed to create new document: ${createError.message}`);
+        throw new Error(`Cannot access document ${docId} and failed to create new document. ${docError.message}`);
+      }
+    } else {
+      throw docError;
+    }
+  }
+  
+  // Ensure the document doesn't end with a list item before clearing
+  body.appendParagraph('');
+  
+  // Clear existing content properly - now works because we don't end with a list item
+  body.clear();
   
   // Title for multi-session reports
   const title = data.sessionCount > 1 
