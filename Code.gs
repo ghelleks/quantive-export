@@ -92,6 +92,24 @@ const BatchProcessor = {
         }
         
         const chunkResponses = UrlFetchApp.fetchAll(fetchAllRequests);
+        
+        // Debug: Check for response contamination in tasks API
+        if (i === 0 && chunkResponses.length > 0 && fetchAllRequests[0].url.includes('/tasks?')) {
+          const firstResponse = chunkResponses[0];
+          if (firstResponse.getResponseCode() === 200) {
+            try {
+              const responseData = JSON.parse(firstResponse.getContentText());
+              const taskCount = Array.isArray(responseData) ? responseData.length : 
+                               responseData.items ? responseData.items.length :
+                               responseData.tasks ? responseData.tasks.length :
+                               responseData.data ? responseData.data.length : 0;
+              Logger.log(`🔍 Debug: First chunk first response has ${taskCount} tasks`);
+            } catch (e) {
+              Logger.log(`🔍 Debug: Could not parse first response: ${e.message}`);
+            }
+          }
+        }
+        
         allResponses.push(...chunkResponses);
         
         // Small delay between chunks to respect rate limits
@@ -641,6 +659,12 @@ function batchFetchTasks(metricIds, config) {
     }
   }));
   
+  // Debug: Log the first few task URLs to verify proper construction
+  Logger.log(`🔍 Debug: First 3 task URLs:`);
+  requests.slice(0, 3).forEach((req, i) => {
+    Logger.log(`   ${i + 1}. ${req.url}`);
+  });
+  
   const responses = BatchProcessor.executeBatchRequests(requests, config);
   const tasksMap = {};
   
@@ -652,7 +676,16 @@ function batchFetchTasks(metricIds, config) {
         if (!responseText.trim().startsWith('<!DOCTYPE') && !responseText.trim().startsWith('<html')) {
           const tasksData = JSON.parse(responseText);
           tasksMap[metricId] = processTasks(tasksData);
-          Logger.log(`📋 Found ${tasksMap[metricId].length} tasks for metric ${metricId}`);
+          
+          // Debug: Check for suspicious duplicate counts
+          const taskCount = tasksMap[metricId].length;
+          if (taskCount === 3658) {
+            Logger.log(`🚨 SUSPICIOUS: Metric ${metricId} has exactly 3658 tasks - possible response contamination`);
+            Logger.log(`🔍 Debug: Response URL should contain metricId=${metricId}`);
+            Logger.log(`🔍 Debug: First few tasks: ${JSON.stringify(tasksMap[metricId].slice(0, 2).map(t => ({id: t.id, name: t.name})))}`);
+          } else {
+            Logger.log(`📋 Found ${taskCount} tasks for metric ${metricId}`);
+          }
         } else {
           Logger.log(`⚠️ Received HTML error page for tasks ${metricId}`);
           tasksMap[metricId] = [];
@@ -1016,7 +1049,33 @@ function fetchSessionDataOptimized(config) {
     Logger.log(`📊 Starting batch fetch of key result data...`);
     const keyResultIds = allKeyResults.map(kr => kr.id);
     const keyResultProgressMap = batchFetchProgressHistory(keyResultIds, config);
-    const keyResultTasksMap = batchFetchTasks(keyResultIds, config);
+    
+    // TEMPORARY: Use individual calls for tasks due to potential API filtering issue
+    Logger.log(`🔧 TEMPORARY: Using individual task fetching due to suspected API issue`);
+    const keyResultTasksMap = {};
+         for (const krId of keyResultIds.slice(0, 5)) { // Test with first 5 only
+       Logger.log(`📋 Fetching tasks individually for metric ${krId}`);
+       keyResultTasksMap[krId] = fetchTasksForMetric(krId, config);
+       
+       if (keyResultTasksMap[krId].length === 3658) {
+         Logger.log(`🚨 CONFIRMED: Individual call also returns 3658 tasks for ${krId} - API endpoint issue`);
+         
+         // Debug: Check if tasks actually belong to this metric
+         const sampleTasks = keyResultTasksMap[krId].slice(0, 3);
+         Logger.log(`🔍 Debug: Sample task IDs and metricIds:`);
+         sampleTasks.forEach((task, i) => {
+           Logger.log(`   Task ${i + 1}: ID=${task.id}, metricId=${task.metricId || task.goalId || 'none'}, name="${task.name}"`);
+         });
+         
+         break; // Stop after confirming the issue
+       }
+     }
+    // For remaining metrics, set empty arrays to avoid the API issue
+    keyResultIds.forEach(krId => {
+      if (!keyResultTasksMap[krId]) {
+        keyResultTasksMap[krId] = [];
+      }
+    });
     
     // Step 6: Enhance key results with batch data
     allKeyResults.forEach(kr => {
