@@ -78,7 +78,20 @@ const BatchProcessor = {
       Logger.log(`📦 Processing chunk ${i + 1}/${chunks.length} (${chunk.length} requests)`);
       
       try {
-        const chunkResponses = UrlFetchApp.fetchAll(chunk);
+        // Convert request objects to the format expected by UrlFetchApp.fetchAll()
+        const fetchAllRequests = chunk.map(req => ({
+          url: req.url,
+          ...req.options
+        }));
+        
+        // Debug: Log the first request to verify format
+        if (i === 0 && fetchAllRequests.length > 0) {
+          Logger.log(`🔍 Debug: First batch request format:`);
+          Logger.log(`   URL: ${fetchAllRequests[0].url}`);
+          Logger.log(`   Headers: ${JSON.stringify(fetchAllRequests[0].headers)}`);
+        }
+        
+        const chunkResponses = UrlFetchApp.fetchAll(fetchAllRequests);
         allResponses.push(...chunkResponses);
         
         // Small delay between chunks to respect rate limits
@@ -918,7 +931,12 @@ function fetchSessionDataOptimized(config) {
   
   // Step 1: Collect basic session and objective data (minimal sequential calls)
   for (const session of sessions) {
-    Logger.log(`📊 Processing session: "${session.name}" (ID: ${session.id})`);
+    // Debug: Log session object properties
+    Logger.log(`🔍 Debug: Session object properties: ${JSON.stringify(Object.keys(session))}`);
+    Logger.log(`🔍 Debug: Session name field: ${session.name}, title field: ${session.title}`);
+    
+    const sessionName = session.name || session.title || `Session ${session.id}`;
+    Logger.log(`📊 Processing session: "${sessionName}" (ID: ${session.id})`);
     
     try {
       const sessionDetail = fetchSessionDetail(session.id, config);
@@ -927,13 +945,13 @@ function fetchSessionDataOptimized(config) {
       const objectives = fetchSessionObjectives(session.id, config);
       objectives.forEach(obj => {
         obj.sessionId = session.id;
-        obj.sessionName = session.name || session.title;
+        obj.sessionName = sessionName;
       });
       allObjectives.push(...objectives);
       
-      Logger.log(`📋 Found ${objectives.length} objectives for session "${session.name}"`);
+      Logger.log(`📋 Found ${objectives.length} objectives for session "${sessionName}"`);
     } catch (error) {
-      Logger.log(`❌ Error processing session "${session.name}" (ID: ${session.id}): ${error.message}`);
+      Logger.log(`❌ Error processing session "${sessionName}" (ID: ${session.id}): ${error.message}`);
       throw error;
     }
   }
@@ -1069,7 +1087,7 @@ function fetchSessionDataOptimized(config) {
     hierarchicalObjectives: hierarchicalObjectives,
     keyResults: allKeyResults,
     sessionCount: sessions.length,
-    sessionNames: sessions.map(s => s.name || s.title).join(', ')
+    sessionNames: sessions.map(s => s.name || s.title || `Session ${s.id}`).join(', ')
   };
 }
 
