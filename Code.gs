@@ -71,11 +71,9 @@ const BatchProcessor = {
     const chunks = BatchProcessor.chunkRequests(requests, chunkSize);
     const allResponses = [];
     
-    Logger.log(`🚀 Executing ${requests.length} requests in ${chunks.length} chunks`);
     
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
-      Logger.log(`📦 Processing chunk ${i + 1}/${chunks.length} (${chunk.length} requests)`);
       
       try {
         // Convert request objects to the format expected by UrlFetchApp.fetchAll()
@@ -85,30 +83,8 @@ const BatchProcessor = {
         }));
         
         // Debug: Log the first request to verify format
-        if (i === 0 && fetchAllRequests.length > 0) {
-          Logger.log(`🔍 Debug: First batch request format:`);
-          Logger.log(`   URL: ${fetchAllRequests[0].url}`);
-          Logger.log(`   Headers: ${JSON.stringify(fetchAllRequests[0].headers)}`);
-        }
         
         const chunkResponses = UrlFetchApp.fetchAll(fetchAllRequests);
-        
-        // Debug: Check for response contamination in tasks API
-        if (i === 0 && chunkResponses.length > 0 && fetchAllRequests[0].url.includes('/tasks?')) {
-          const firstResponse = chunkResponses[0];
-          if (firstResponse.getResponseCode() === 200) {
-            try {
-              const responseData = JSON.parse(firstResponse.getContentText());
-              const taskCount = Array.isArray(responseData) ? responseData.length : 
-                               responseData.items ? responseData.items.length :
-                               responseData.tasks ? responseData.tasks.length :
-                               responseData.data ? responseData.data.length : 0;
-              Logger.log(`🔍 Debug: First chunk first response has ${taskCount} tasks`);
-            } catch (e) {
-              Logger.log(`🔍 Debug: Could not parse first response: ${e.message}`);
-            }
-          }
-        }
         
         allResponses.push(...chunkResponses);
         
@@ -117,7 +93,6 @@ const BatchProcessor = {
           Utilities.sleep(200);
         }
       } catch (error) {
-        Logger.log(`❌ Chunk ${i + 1} failed: ${error.message}`);
         // Add null responses for failed chunk
         allResponses.push(...Array(chunk.length).fill(null));
       }
@@ -383,7 +358,6 @@ function fetchProgressHistory(metricId, config) {
     const endDateString = endDate.toISOString().split('T')[0];
     
     const historyUrl = `${config.baseUrl}/metrics/${metricId}/values?from=${startDateString}&to=${endDateString}`;
-    Logger.log(`📈 Fetching progress history for metric ${metricId} from: ${historyUrl}`);
     
     const historyResponse = UrlFetchApp.fetch(historyUrl, { 
       headers: headers,
@@ -405,7 +379,6 @@ function fetchProgressHistory(metricId, config) {
       } else if (historyData.data && Array.isArray(historyData.data)) {
         progressEntries = historyData.data;
       } else {
-        Logger.log(`⚠️ Unexpected progress history response format for metric ${metricId}: ${typeof historyData}`);
         return [];
       }
       
@@ -415,19 +388,15 @@ function fetchProgressHistory(metricId, config) {
         progress: entry.progress || entry.value || entry.percentage || 0
       })).filter(entry => entry.date); // Only include entries with valid dates
       
-      Logger.log(`✅ Found ${standardizedHistory.length} progress history entries for metric ${metricId}`);
       return standardizedHistory;
       
     } else if (historyResponse.getResponseCode() === 404) {
       // No history found - this is normal for new metrics
-      Logger.log(`📈 No progress history found for metric ${metricId} (404)`);
       return [];
     } else {
-      Logger.log(`⚠️ Could not fetch progress history for metric ${metricId}: ${historyResponse.getResponseCode()}`);
       return [];
     }
   } catch (error) {
-    Logger.log(`⚠️ Error fetching progress history for metric ${metricId}: ${error.message}`);
     return [];
   }
 }
@@ -448,7 +417,6 @@ function processProgressHistory(historyData) {
   } else if (historyData.data && Array.isArray(historyData.data)) {
     progressEntries = historyData.data;
   } else {
-    Logger.log(`⚠️ Unexpected progress history format: ${typeof historyData}`);
     return [];
   }
   
@@ -466,7 +434,6 @@ function batchFetchProgressHistory(metricIds, config) {
   if (!metricIds || metricIds.length === 0) return {};
   
   const uniqueMetricIds = [...new Set(metricIds.filter(id => id))];
-  Logger.log(`📈 Batch fetching progress history for ${uniqueMetricIds.length} unique metrics`);
   
   // Calculate date range for sparkline history
   const endDate = new Date();
@@ -495,26 +462,20 @@ function batchFetchProgressHistory(metricIds, config) {
         if (!responseText.trim().startsWith('<!DOCTYPE') && !responseText.trim().startsWith('<html')) {
           const historyData = JSON.parse(responseText);
           progressMap[metricId] = processProgressHistory(historyData);
-          Logger.log(`📊 Found ${progressMap[metricId].length} progress entries for metric ${metricId}`);
         } else {
-          Logger.log(`⚠️ Received HTML error page for progress history ${metricId}`);
           progressMap[metricId] = [];
         }
       } catch (error) {
-        Logger.log(`⚠️ Error parsing progress history for ${metricId}: ${error.message}`);
         progressMap[metricId] = [];
       }
     } else if (response && response.getResponseCode() === 404) {
       // No history found - this is normal for new metrics
-      Logger.log(`📈 No progress history found for metric ${metricId} (404)`);
       progressMap[metricId] = [];
     } else {
-      Logger.log(`⚠️ Could not fetch progress history for metric ${metricId}: ${response ? response.getResponseCode() : 'no response'}`);
       progressMap[metricId] = [];
     }
   });
   
-  Logger.log(`✅ Batch progress history fetching complete: ${Object.keys(progressMap).length} metrics processed`);
   return progressMap;
 }
 
@@ -582,7 +543,6 @@ function processTasks(tasksData) {
   } else if (tasksData.data && Array.isArray(tasksData.data)) {
     tasks = tasksData.data;
   } else {
-    Logger.log(`⚠️ Unexpected tasks response format: ${typeof tasksData}`);
     return [];
   }
   
@@ -591,27 +551,21 @@ function processTasks(tasksData) {
 
 /**
  * Batch fetch tasks for multiple metric IDs
- * Replaces individual fetchTasksForMetric calls for better performance
+ * Now uses /metrics/{metricId} endpoint instead of problematic /tasks?metricId={metricId}
  */
 function batchFetchTasks(metricIds, config) {
   if (!metricIds || metricIds.length === 0) return {};
   
   const uniqueMetricIds = [...new Set(metricIds.filter(id => id))];
-  Logger.log(`📋 Batch fetching tasks for ${uniqueMetricIds.length} unique metrics`);
   
   const requests = uniqueMetricIds.map(metricId => ({
-    url: `${config.baseUrl}/tasks?metricId=${metricId}`,
+    url: `${config.baseUrl}/metrics/${metricId}?expand=tasks`,
     options: { 
       headers: BatchProcessor.buildHeaders(config),
       muteHttpExceptions: true 
     }
   }));
   
-  // Debug: Log the first few task URLs to verify proper construction
-  Logger.log(`🔍 Debug: First 3 task URLs:`);
-  requests.slice(0, 3).forEach((req, i) => {
-    Logger.log(`   ${i + 1}. ${req.url}`);
-  });
   
   const responses = BatchProcessor.executeBatchRequests(requests, config);
   const tasksMap = {};
@@ -622,38 +576,47 @@ function batchFetchTasks(metricIds, config) {
       try {
         const responseText = response.getContentText();
         if (!responseText.trim().startsWith('<!DOCTYPE') && !responseText.trim().startsWith('<html')) {
-          const tasksData = JSON.parse(responseText);
-          tasksMap[metricId] = processTasks(tasksData);
+          const metricData = JSON.parse(responseText);
           
-          // Debug: Check for suspicious duplicate counts
-          const taskCount = tasksMap[metricId].length;
-          if (taskCount === 3658) {
-            Logger.log(`🚨 SUSPICIOUS: Metric ${metricId} has exactly 3658 tasks - possible response contamination`);
-            Logger.log(`🔍 Debug: Response URL should contain metricId=${metricId}`);
-            Logger.log(`🔍 Debug: First few tasks: ${JSON.stringify(tasksMap[metricId].slice(0, 2).map(t => ({id: t.id, name: t.name})))}`);
+          // Extract tasks from metric response
+          let tasks = [];
+          if (metricData.tasks && Array.isArray(metricData.tasks)) {
+            tasks = metricData.tasks;
+          } else if (metricData.links && metricData.links.expanded && metricData.links.expanded.tasks && Array.isArray(metricData.links.expanded.tasks)) {
+            tasks = metricData.links.expanded.tasks;
           } else {
-            Logger.log(`📋 Found ${taskCount} tasks for metric ${metricId}`);
+            // If no tasks found, check tasksCount
+            const taskCount = metricData.tasksCount || 0;
           }
+          
+          // Process tasks (similar to processTasks function)
+          tasksMap[metricId] = tasks.map(task => ({
+            ...task,
+            ownerName: task.assignee?.name || task.assignee?.displayName || task.assignee?.email || 
+                      task.owner?.name || task.owner?.displayName || task.owner?.email || 'Unassigned'
+          }));
+          
+          const taskCount = tasksMap[metricId].length;
         } else {
-          Logger.log(`⚠️ Received HTML error page for tasks ${metricId}`);
+          Logger.log(`⚠️ Received HTML error page for metric ${metricId}`);
           tasksMap[metricId] = [];
         }
       } catch (error) {
-        Logger.log(`⚠️ Error parsing tasks data for ${metricId}: ${error.message}`);
+        Logger.log(`⚠️ Error parsing metric data for ${metricId}: ${error.message}`);
         tasksMap[metricId] = [];
       }
     } else {
-      Logger.log(`⚠️ Could not fetch tasks for metric ${metricId}: ${response ? response.getResponseCode() : 'no response'}`);
+      Logger.log(`⚠️ Could not fetch metric data for ${metricId}: ${response ? response.getResponseCode() : 'no response'}`);
       tasksMap[metricId] = [];
     }
   });
   
-  Logger.log(`✅ Batch tasks fetching complete: ${Object.keys(tasksMap).length} metrics processed`);
   return tasksMap;
 }
 
 /**
  * Fetch tasks for a given metric (key result)
+ * Now uses /metrics/{metricId} endpoint instead of problematic /tasks?metricId={metricId}
  */
 function fetchTasksForMetric(metricId, config) {
   if (!metricId) return [];
@@ -665,43 +628,51 @@ function fetchTasksForMetric(metricId, config) {
   };
   
   try {
-    const tasksUrl = `${config.baseUrl}/tasks?metricId=${metricId}`;
-    Logger.log(`🔧 Fetching tasks for metric ${metricId} from: ${tasksUrl}`);
+    // Try to get tasks from the metric endpoint with expand parameter
+    const metricUrl = `${config.baseUrl}/metrics/${metricId}?expand=tasks`;
     
-    const tasksResponse = UrlFetchApp.fetch(tasksUrl, { 
+    const metricResponse = UrlFetchApp.fetch(metricUrl, { 
       headers: headers,
       muteHttpExceptions: true 
     });
     
-    if (tasksResponse.getResponseCode() === 200) {
-      const tasksResponseText = tasksResponse.getContentText();
-      const tasksData = JSON.parse(tasksResponseText);
+    if (metricResponse.getResponseCode() === 200) {
+      const metricResponseText = metricResponse.getContentText();
+      const metricData = JSON.parse(metricResponseText);
       
-      // Handle different response formats
-      let tasks;
-      if (Array.isArray(tasksData)) {
-        tasks = tasksData;
-      } else if (tasksData.items && Array.isArray(tasksData.items)) {
-        tasks = tasksData.items;
-      } else if (tasksData.tasks && Array.isArray(tasksData.tasks)) {
-        tasks = tasksData.tasks;
-      } else if (tasksData.data && Array.isArray(tasksData.data)) {
-        tasks = tasksData.data;
+      // First check if expand=tasks worked and tasks are included directly
+      let tasks = [];
+      if (metricData.tasks && Array.isArray(metricData.tasks)) {
+        tasks = metricData.tasks;
+      } else if (metricData.links && metricData.links.expanded && metricData.links.expanded.tasks && Array.isArray(metricData.links.expanded.tasks)) {
+        tasks = metricData.links.expanded.tasks;
       } else {
-        Logger.log(`⚠️ Unexpected tasks response format for metric ${metricId}: ${typeof tasksData}`);
-        return [];
+        // If no tasks found, check tasksCount to see if we should expect any
+        const taskCount = metricData.tasksCount || 0;
+        
+        if (taskCount > 0) {
+          // Try the direct /metrics/{metricId} endpoint without expand
+          const simpleMetricUrl = `${config.baseUrl}/metrics/${metricId}`;
+          const simpleMetricResponse = UrlFetchApp.fetch(simpleMetricUrl, { 
+            headers: headers,
+            muteHttpExceptions: true 
+          });
+          
+          if (simpleMetricResponse.getResponseCode() === 200) {
+            const simpleMetricData = JSON.parse(simpleMetricResponse.getContentText());
+            if (simpleMetricData.tasks && Array.isArray(simpleMetricData.tasks)) {
+              tasks = simpleMetricData.tasks;
+            }
+          }
+        }
       }
       
-      Logger.log(`✅ Found ${tasks.length} tasks for metric ${metricId}`);
-      
-      // Fetch owner names for each task - try embedded first
+      // Process task owner names
       for (const task of tasks) {
         if (task.assignee && typeof task.assignee === 'object') {
           task.ownerName = task.assignee.name || task.assignee.displayName || task.assignee.email || 'Unassigned';
-          Logger.log(`📊 Using embedded assignee name for task "${task.name}": ${task.ownerName}`);
         } else if (task.owner && typeof task.owner === 'object') {
           task.ownerName = task.owner.name || task.owner.displayName || task.owner.email || 'Unassigned';
-          Logger.log(`📊 Using embedded owner name for task "${task.name}": ${task.ownerName}`);
         } else if (task.ownerId) {
           task.ownerName = fetchUserDisplayName(task.ownerId, config);
         } else if (task.assigneeId) {
@@ -713,11 +684,10 @@ function fetchTasksForMetric(metricId, config) {
       
       return tasks;
     } else {
-      Logger.log(`⚠️ Could not fetch tasks for metric ${metricId}: ${tasksResponse.getResponseCode()}`);
+      Logger.log(`⚠️ Could not fetch metric data for ${metricId}: ${metricResponse.getResponseCode()}`);
       return [];
     }
   } catch (error) {
-    Logger.log(`⚠️ Error fetching tasks for metric ${metricId}: ${error.message}`);
     return [];
   }
 }
@@ -913,8 +883,6 @@ function fetchSessionDataOptimized(config) {
   // Step 1: Collect basic session and objective data (minimal sequential calls)
   for (const session of sessions) {
     // Debug: Log session object properties
-    Logger.log(`🔍 Debug: Session object properties: ${JSON.stringify(Object.keys(session))}`);
-    Logger.log(`🔍 Debug: Session name field: ${session.name}, title field: ${session.title}`);
     
     const sessionName = session.name || session.title || `Session ${session.id}`;
     Logger.log(`📊 Processing session: "${sessionName}" (ID: ${session.id})`);
@@ -998,22 +966,11 @@ function fetchSessionDataOptimized(config) {
     const keyResultIds = allKeyResults.map(kr => kr.id);
     const keyResultProgressMap = batchFetchProgressHistory(keyResultIds, config);
     
-    // TEMPORARY: Use individual calls for tasks due to potential API filtering issue
-    Logger.log(`🔧 TEMPORARY: Using individual task fetching due to suspected API issue`);
-    const keyResultTasksMap = {};
+    const keyResultTasksMap = batchFetchTasks(keyResultIds, config);
          for (const krId of keyResultIds.slice(0, 5)) { // Test with first 5 only
-       Logger.log(`📋 Fetching tasks individually for metric ${krId}`);
        keyResultTasksMap[krId] = fetchTasksForMetric(krId, config);
        
        if (keyResultTasksMap[krId].length === 3658) {
-         Logger.log(`🚨 CONFIRMED: Individual call also returns 3658 tasks for ${krId} - API endpoint issue`);
-         
-         // Debug: Check if tasks actually belong to this metric
-         const sampleTasks = keyResultTasksMap[krId].slice(0, 3);
-         Logger.log(`🔍 Debug: Sample task IDs and metricIds:`);
-         sampleTasks.forEach((task, i) => {
-           Logger.log(`   Task ${i + 1}: ID=${task.id}, metricId=${task.metricId || task.goalId || 'none'}, name="${task.name}"`);
-         });
          
          break; // Stop after confirming the issue
        }
@@ -1193,23 +1150,15 @@ function fetchSessionDataSequential(config) {
       
       // Log objective structure (only once for the first session)
       if (allObjectives.length === 0 && sessionObjectives.length > 0) {
-        Logger.log(`📋 Sample objective structure: ${JSON.stringify(Object.keys(sessionObjectives[0]))}`);
-        Logger.log(`🔍 Checking for hierarchy fields in objectives...`);
         
         const hierarchyFields = [];
         const sampleObj = sessionObjectives[0];
         ['parentId', 'parentGoalId', 'parentObjectiveId', 'parent', 'parentGoal'].forEach(field => {
           if (sampleObj.hasOwnProperty(field)) {
             hierarchyFields.push(field);
-            Logger.log(`   Found hierarchy field: ${field} = ${sampleObj[field]}`);
           }
         });
         
-        if (hierarchyFields.length > 0) {
-          Logger.log(`✅ Detected hierarchy fields: ${hierarchyFields.join(', ')}`);
-        } else {
-          Logger.log(`⚠️ No obvious hierarchy fields found, will treat objectives as flat structure`);
-        }
       }
       
       // Add to aggregated objectives
@@ -1246,7 +1195,6 @@ function fetchSessionDataSequential(config) {
       if (goalResponseCode === 200 && !goalResponseText.trim().startsWith('<!DOCTYPE') && !goalResponseText.trim().startsWith('<html')) {
         try {
           const goalData = JSON.parse(goalResponseText);
-          Logger.log(`📊 Goal data structure: ${JSON.stringify(Object.keys(goalData))}`);
           
           // Update objective with detailed goal data using correct field names
           objective.name = goalData.name || objective.name;
@@ -1257,10 +1205,8 @@ function fetchSessionDataSequential(config) {
           // Extract owner information - try embedded first, then fetch user display name
           if (goalData.assignee && typeof goalData.assignee === 'object') {
             objective.ownerName = goalData.assignee.name || goalData.assignee.displayName || goalData.assignee.email || 'Unassigned';
-            Logger.log(`📊 Using embedded assignee name for objective "${objective.name}": ${objective.ownerName}`);
           } else if (goalData.owner && typeof goalData.owner === 'object') {
             objective.ownerName = goalData.owner.name || goalData.owner.displayName || goalData.owner.email || 'Unassigned';
-            Logger.log(`📊 Using embedded owner name for objective "${objective.name}": ${objective.ownerName}`);
           } else if (goalData.ownerId) {
             objective.ownerId = goalData.ownerId;
             objective.ownerName = fetchUserDisplayName(goalData.ownerId, config);
@@ -1276,30 +1222,15 @@ function fetchSessionDataSequential(config) {
           Logger.log(`📊 Updated objective "${objective.name}" - Progress: ${objective.progress}%, Owner: ${objective.ownerName}, Status: ${objective.status}`);
           
           // Fetch progress history and generate sparkline for objective
-          Logger.log(`   📈 Fetching progress history for objective "${objective.name}" (ID: ${objective.id})`);
           objective.progressHistory = fetchProgressHistory(objective.id, config);
           objective.sparkline = generateSparkline(objective.progressHistory);
-          Logger.log(`   ✨ Generated sparkline for objective "${objective.name}": ${objective.sparkline}`);
           
           // Extract metrics from the correct field name
           if (goalData.metrics && Array.isArray(goalData.metrics)) {
             keyResults = goalData.metrics;
-            Logger.log(`✅ Found ${keyResults.length} key results from metrics array for "${objective.name}"`);
             
-            // Log structure of first key result to understand task fields
-            if (keyResults.length > 0) {
-              Logger.log(`📊 Sample KR structure: ${JSON.stringify(Object.keys(keyResults[0]))}`);
-              const sampleKR = keyResults[0];
-              ['taskCount', 'tasksCount', 'tasks', 'numberOfTasks'].forEach(field => {
-                if (sampleKR.hasOwnProperty(field)) {
-                  Logger.log(`   Found task field: ${field} = ${sampleKR[field]}`);
-                }
-              });
-            }
           } else {
             Logger.log(`⚠️ No metrics array found for objective "${objective.name}"`);
-            Logger.log(`   Available fields: ${JSON.stringify(Object.keys(goalData))}`);
-            Logger.log(`   Metrics field type: ${typeof goalData.metrics}, Value: ${goalData.metrics}`);
             keyResults = [];
           }
         } catch (parseError) {
@@ -1333,10 +1264,8 @@ function fetchSessionDataSequential(config) {
       // Fetch owner information for the key result - try embedded first
       if (kr.owner && typeof kr.owner === 'object') {
         kr.ownerName = kr.owner.name || kr.owner.displayName || kr.owner.email || 'Unassigned';
-        Logger.log(`📊 Using embedded owner name for KR "${kr.name}": ${kr.ownerName}`);
       } else if (kr.assignee && typeof kr.assignee === 'object') {
         kr.ownerName = kr.assignee.name || kr.assignee.displayName || kr.assignee.email || 'Unassigned';
-        Logger.log(`📊 Using embedded assignee name for KR "${kr.name}": ${kr.ownerName}`);
       } else if (kr.ownerId) {
         kr.ownerName = fetchUserDisplayName(kr.ownerId, config);
       } else if (!kr.ownerName) {
@@ -1346,19 +1275,14 @@ function fetchSessionDataSequential(config) {
       // Check if this key result has tasks before fetching
       const taskCount = kr.taskCount || kr.tasksCount || 0;
       if (taskCount > 0) {
-        Logger.log(`   📋 Key result "${kr.name}" has ${taskCount} tasks, fetching...`);
         kr.tasks = fetchTasksForMetric(kr.id, config);
-        Logger.log(`   ✅ Found ${kr.tasks.length} tasks for key result "${kr.name}"`);
       } else {
-        Logger.log(`   📋 Key result "${kr.name}" has no tasks (taskCount: ${taskCount})`);
         kr.tasks = [];
       }
       
       // Fetch progress history and generate sparkline
-      Logger.log(`   📈 Fetching progress history for key result "${kr.name}" (ID: ${kr.id})`);
       kr.progressHistory = fetchProgressHistory(kr.id, config);
       kr.sparkline = generateSparkline(kr.progressHistory);
-      Logger.log(`   ✨ Generated sparkline for "${kr.name}": ${kr.sparkline}`);
     }
     
     allKeyResults.push(...keyResults);
@@ -1407,13 +1331,11 @@ function fetchSessionDataSequential(config) {
  * Build hierarchical structure from flat objectives array
  */
 function buildObjectiveHierarchy(objectives) {
-  Logger.log(`🏗️ Building objective hierarchy from ${objectives.length} objectives...`);
   
   // Detect hierarchy field(s) used in this dataset
   const hierarchyField = detectHierarchyField(objectives);
   
   if (!hierarchyField) {
-    Logger.log(`⚠️ No hierarchy field detected, returning flat structure`);
     return objectives.map(obj => ({
       ...obj,
       level: 0,
@@ -1422,7 +1344,6 @@ function buildObjectiveHierarchy(objectives) {
     }));
   }
   
-  Logger.log(`📊 Using hierarchy field: ${hierarchyField}`);
   
   // Create maps for quick lookup
   const objectiveMap = new Map();
@@ -1520,9 +1441,6 @@ function buildObjectiveHierarchy(objectives) {
   });
   
   // Log hierarchy statistics
-  Logger.log(`📈 Hierarchy Statistics:`);
-  Logger.log(`   Roots: ${hierarchyStats.roots}, Orphans: ${hierarchyStats.orphans}`);
-  Logger.log(`   Levels: ${JSON.stringify(hierarchyStats.levels)}`);
   Logger.log(`   Total processed: ${hierarchicalList.length}/${objectives.length}`);
   
   // Store orphan information for reporting
@@ -1544,7 +1462,6 @@ function detectHierarchyField(objectives) {
   for (const field of possibleFields) {
     const hasField = objectives.some(obj => obj.hasOwnProperty(field) && obj[field] != null);
     if (hasField) {
-      Logger.log(`🔍 Detected hierarchy field: ${field}`);
       return field;
     }
   }
@@ -1821,29 +1738,9 @@ function writeReport(docId, data, stats, config) {
   // Debug key results associations before processing
   if (data.keyResults.length > 0) {
     Logger.log(`🔍 Key Results Association Debug:`);
-    Logger.log(`   Sample KR structure: ${JSON.stringify(Object.keys(data.keyResults[0]))}`);
     const goalIdCount = data.keyResults.filter(kr => kr.goalId).length;
     Logger.log(`   KRs with goalId: ${goalIdCount}/${data.keyResults.length}`);
     
-    // Show sample goalId values to verify they match objective IDs
-    const sampleGoalIds = data.keyResults.slice(0, 5).map(kr => kr.goalId);
-    Logger.log(`   Sample goalId values: ${sampleGoalIds.join(', ')}`);
-    
-    // Show sample objective IDs to compare
-    const sampleObjectiveIds = objectivesToProcess.slice(0, 5).map(obj => obj.id);
-    Logger.log(`   Sample objective IDs: ${sampleObjectiveIds.join(', ')}`);
-    
-    // Check for any matches
-    const objectiveIdSet = new Set(objectivesToProcess.map(obj => obj.id));
-    const goalIdSet = new Set(data.keyResults.map(kr => kr.goalId).filter(Boolean));
-    const matchingIds = [...goalIdSet].filter(id => objectiveIdSet.has(id));
-    Logger.log(`   Matching IDs: ${matchingIds.length} (${matchingIds.slice(0, 3).join(', ')})`);
-    
-    if (matchingIds.length === 0) {
-      Logger.log(`   ❌ NO MATCHING IDs FOUND! This explains why no key results are showing up.`);
-      Logger.log(`   All goalIds: ${[...goalIdSet].slice(0, 10).join(', ')}`);
-      Logger.log(`   All objectiveIds: ${[...objectiveIdSet].slice(0, 10).join(', ')}`);
-    }
   }
   
   objectivesToProcess.forEach((objective, index) => {
@@ -1943,7 +1840,6 @@ function writeReport(docId, data, stats, config) {
     });
     
     Logger.log(`✅ Hierarchical Validation: Processed ${totalProcessed} key results across ${objectivesToProcess.length} objectives`);
-    Logger.log(`📊 Hierarchy levels: ${JSON.stringify(levelStats)}`);
     Logger.log(`📊 Total key results in dataset: ${data.keyResults.length}`);
   } else {
     Logger.log(`✅ Flat Validation: Processed ${totalProcessed} key results across ${objectivesToProcess.length} objectives`);
@@ -1955,7 +1851,11 @@ function writeReport(docId, data, stats, config) {
     Logger.log(`This could indicate duplicate key results or missing associations`);
   }
   
-  Logger.log(`📄 Report written to Google Doc: ${doc.getUrl()}`);
+  const docUrl = doc.getUrl();
+  const documentId = doc.getId();
+  Logger.log(`📄 Report written to Google Doc:`);
+  Logger.log(`   Document ID: ${documentId}`);
+  Logger.log(`   Document URL: ${docUrl}`);
 }
 
 /**
