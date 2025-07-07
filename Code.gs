@@ -269,14 +269,12 @@ function fetchUserDisplayName(userId, config, userMap = null) {
   
   // Check existing cache first
   if (USER_NAME_CACHE[userId]) {
-    Logger.log(`👤 Using cached name for user ${userId}: ${USER_NAME_CACHE[userId]}`);
     return USER_NAME_CACHE[userId];
   }
   
   // Use batch-fetched user map if available
   if (userMap && userMap[userId]) {
     USER_NAME_CACHE[userId] = userMap[userId];
-    Logger.log(`👤 Using batch-fetched name for user ${userId}: ${userMap[userId]}`);
     return userMap[userId];
   }
   
@@ -288,7 +286,6 @@ function fetchUserDisplayName(userId, config, userMap = null) {
   
   try {
     const userUrl = `${config.baseUrl}/users/${userId}`;
-    Logger.log(`👤 Fetching user details from: ${userUrl}`);
     
     const userResponse = UrlFetchApp.fetch(userUrl, { 
       headers: headers,
@@ -298,43 +295,18 @@ function fetchUserDisplayName(userId, config, userMap = null) {
     const responseCode = userResponse.getResponseCode();
     const responseText = userResponse.getContentText();
     
-    Logger.log(`👤 User API response for ${userId}: ${responseCode}`);
-    
     if (responseCode === 200) {
       const userData = JSON.parse(responseText);
-      Logger.log(`👤 User data structure: ${JSON.stringify(Object.keys(userData))}`);
       
       const displayName = userData.displayName || userData.name || userData.email || userData.firstName + ' ' + userData.lastName || `User ${userId}`;
-      Logger.log(`👤 Resolved user ${userId} to: ${displayName}`);
       USER_NAME_CACHE[userId] = displayName;
       return displayName;
     } else {
-      Logger.log(`⚠️ Could not fetch user ${userId}: ${responseCode} - ${responseText.substring(0, 200)}`);
-      
-      // Try alternative endpoint if the main one fails
-      const altUserUrl = `${config.baseUrl}/account/users/${userId}`;
-      Logger.log(`👤 Trying alternative user endpoint: ${altUserUrl}`);
-      
-      const altUserResponse = UrlFetchApp.fetch(altUserUrl, { 
-        headers: headers,
-        muteHttpExceptions: true 
-      });
-      
-      if (altUserResponse.getResponseCode() === 200) {
-        const userData = JSON.parse(altUserResponse.getContentText());
-        const displayName = userData.displayName || userData.name || userData.email || userData.firstName + ' ' + userData.lastName || `User ${userId}`;
-        Logger.log(`👤 Resolved user ${userId} via alternative endpoint to: ${displayName}`);
-        USER_NAME_CACHE[userId] = displayName;
-        return displayName;
-      } else {
-        Logger.log(`⚠️ Alternative user endpoint also failed for ${userId}: ${altUserResponse.getResponseCode()}`);
-        const fallbackName = `User ${userId}`;
-        USER_NAME_CACHE[userId] = fallbackName;
-        return fallbackName;
-      }
+      const fallbackName = `User ${userId}`;
+      USER_NAME_CACHE[userId] = fallbackName;
+      return fallbackName;
     }
   } catch (error) {
-    Logger.log(`⚠️ Error fetching user ${userId}: ${error.message}`);
     const fallbackName = `User ${userId}`;
     USER_NAME_CACHE[userId] = fallbackName;
     return fallbackName;
@@ -374,42 +346,18 @@ function batchFetchUsers(userIds, config) {
                             `User ${userId}`;
           userMap[userId] = displayName;
           USER_NAME_CACHE[userId] = displayName;
-          Logger.log(`👤 Resolved user ${userId} to: ${displayName}`);
         } else {
-          Logger.log(`⚠️ Received HTML error page for user ${userId}`);
           userMap[userId] = `User ${userId}`;
         }
       } catch (error) {
-        Logger.log(`⚠️ Error parsing user data for ${userId}: ${error.message}`);
         userMap[userId] = `User ${userId}`;
       }
     } else {
-      // Try alternative endpoint for failed users
-      const altUserUrl = `${config.baseUrl}/account/users/${userId}`;
-      try {
-        const altResponse = UrlFetchApp.fetch(altUserUrl, { 
-          headers: BatchProcessor.buildHeaders(config),
-          muteHttpExceptions: true 
-        });
-        if (altResponse.getResponseCode() === 200) {
-          const userData = JSON.parse(altResponse.getContentText());
-          const displayName = userData.displayName || userData.name || userData.email || 
-                            (userData.firstName && userData.lastName ? `${userData.firstName} ${userData.lastName}` : null) || 
-                            `User ${userId}`;
-          userMap[userId] = displayName;
-          USER_NAME_CACHE[userId] = displayName;
-          Logger.log(`👤 Resolved user ${userId} via alternative endpoint to: ${displayName}`);
-        } else {
-          userMap[userId] = `User ${userId}`;
-        }
-      } catch (altError) {
-        Logger.log(`⚠️ Alternative endpoint also failed for user ${userId}: ${altError.message}`);
-        userMap[userId] = `User ${userId}`;
-      }
+      userMap[userId] = `User ${userId}`;
     }
   });
   
-  Logger.log(`✅ Batch user fetching complete: ${Object.keys(userMap).length} users resolved`);
+  Logger.log(`✅ Batch user fetching complete: ${Object.keys(userMap).length}/${uniqueUserIds.length} users resolved`);
   return userMap;
 }
 
