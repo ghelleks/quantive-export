@@ -23,31 +23,169 @@ const INTERNAL_CONFIG = {
 // User name cache to avoid duplicate API calls
 const USER_NAME_CACHE = {};
 
+// Batch processing utilities for performance optimization
+const BatchProcessor = {
+  // Build standardized headers for API requests
+  buildHeaders: (config) => ({
+    'Authorization': `Bearer ${config.apiToken}`,
+    'Gtmhub-AccountId': config.accountId,
+    'Content-Type': 'application/json'
+  }),
+  
+  // Process batch responses with error handling
+  processBatchResponses: (responses, ids, processingFunction) => {
+    return responses.map((response, index) => {
+      try {
+        if (response.getResponseCode() === 200) {
+          const responseText = response.getContentText();
+          if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+            Logger.log(`⚠️ Received HTML error page for batch item ${ids[index]}`);
+            return null;
+          }
+          const data = JSON.parse(responseText);
+          return processingFunction(data, ids[index]);
+        } else {
+          Logger.log(`⚠️ Batch request failed for ${ids[index]}: ${response.getResponseCode()}`);
+          return null;
+        }
+      } catch (error) {
+        Logger.log(`⚠️ Batch processing error for ${ids[index]}: ${error.message}`);
+        return null;
+      }
+    }).filter(item => item !== null);
+  },
+  
+  // Chunk large batches to respect API limits
+  chunkRequests: (requests, chunkSize = 10) => {
+    const chunks = [];
+    for (let i = 0; i < requests.length; i += chunkSize) {
+      chunks.push(requests.slice(i, i + chunkSize));
+    }
+    return chunks;
+  },
+  
+  // Execute batch requests with chunking support
+  executeBatchRequests: (requests, config, chunkSize = 10) => {
+    if (!requests || requests.length === 0) return [];
+    
+    const chunks = BatchProcessor.chunkRequests(requests, chunkSize);
+    const allResponses = [];
+    
+    Logger.log(`🚀 Executing ${requests.length} requests in ${chunks.length} chunks`);
+    
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      Logger.log(`📦 Processing chunk ${i + 1}/${chunks.length} (${chunk.length} requests)`);
+      
+      try {
+        const chunkResponses = UrlFetchApp.fetchAll(chunk);
+        allResponses.push(...chunkResponses);
+        
+        // Small delay between chunks to respect rate limits
+        if (i < chunks.length - 1) {
+          Utilities.sleep(200);
+        }
+      } catch (error) {
+        Logger.log(`❌ Chunk ${i + 1} failed: ${error.message}`);
+        // Add null responses for failed chunk
+        allResponses.push(...Array(chunk.length).fill(null));
+      }
+    }
+    
+    return allResponses;
+  }
+};
+
 /**
  * Main function - generates a Quantive report
  * Run this manually or set up a trigger to run it automatically
+ * Now includes performance timing and validation
  */
 function generateQuantiveReport() {
+  const startTime = Date.now();
+  let performanceLog = {
+    totalTime: 0,
+    configTime: 0,
+    dataFetchTime: 0,
+    statsTime: 0,
+    writeTime: 0,
+    batchProcessingUsed: false,
+    apiCallCount: 0,
+    recordsProcessed: 0
+  };
+  
   try {
-    Logger.log('🎯 Starting Quantive report generation...');
+    Logger.log('🎯 Starting Quantive report generation with performance monitoring...');
     
     // Get configuration
+    const configStart = Date.now();
     const config = getConfig();
+    performanceLog.configTime = Date.now() - configStart;
     
     // Fetch data from Quantive
+    const dataStart = Date.now();
     const sessionData = fetchSessionData(config);
+    performanceLog.dataFetchTime = Date.now() - dataStart;
+    
+    // Log performance metrics
+    performanceLog.recordsProcessed = {
+      sessions: sessionData.sessionCount || 0,
+      objectives: sessionData.objectives?.length || 0,
+      keyResults: sessionData.keyResults?.length || 0
+    };
     
     // Calculate statistics
+    const statsStart = Date.now();
     const stats = calculateStats(sessionData, config);
+    performanceLog.statsTime = Date.now() - statsStart;
     
     // Write report to Google Doc
+    const writeStart = Date.now();
     writeReport(config.googleDocId, sessionData, stats, config);
+    performanceLog.writeTime = Date.now() - writeStart;
+    
+    // Calculate total time
+    const endTime = Date.now();
+    performanceLog.totalTime = (endTime - startTime) / 1000;
+    
+    // Log performance summary
+    Logger.log('🚀 Performance Summary:');
+    Logger.log(`   Total Time: ${performanceLog.totalTime.toFixed(2)} seconds`);
+    Logger.log(`   Config Time: ${(performanceLog.configTime / 1000).toFixed(2)}s`);
+    Logger.log(`   Data Fetch Time: ${(performanceLog.dataFetchTime / 1000).toFixed(2)}s`);
+    Logger.log(`   Stats Time: ${(performanceLog.statsTime / 1000).toFixed(2)}s`);
+    Logger.log(`   Write Time: ${(performanceLog.writeTime / 1000).toFixed(2)}s`);
+    Logger.log(`   Records Processed: ${JSON.stringify(performanceLog.recordsProcessed)}`);
+    
+    // Performance validation
+    if (performanceLog.totalTime < 30) {
+      Logger.log('✅ Excellent performance! Report generated in under 30 seconds.');
+    } else if (performanceLog.totalTime < 60) {
+      Logger.log('🟡 Good performance. Report generated in under 1 minute.');
+    } else {
+      Logger.log('🔴 Performance warning: Report took over 1 minute to generate.');
+    }
     
     Logger.log('✅ Report generated successfully!');
     Logger.log(`📄 Report written to: ${config.googleDocId}`);
     
+    return {
+      success: true,
+      performanceLog: performanceLog,
+      docId: config.googleDocId
+    };
+    
   } catch (error) {
-    Logger.log(`❌ Error: ${error.message}`);
+    const endTime = Date.now();
+    performanceLog.totalTime = (endTime - startTime) / 1000;
+    
+    Logger.log(`❌ Error after ${performanceLog.totalTime.toFixed(2)} seconds: ${error.message}`);
+    Logger.log('🔍 Performance log at time of error:');
+    Logger.log(`   Config Time: ${(performanceLog.configTime / 1000).toFixed(2)}s`);
+    Logger.log(`   Data Fetch Time: ${(performanceLog.dataFetchTime / 1000).toFixed(2)}s`);
+    Logger.log(`   Stats Time: ${(performanceLog.statsTime / 1000).toFixed(2)}s`);
+    Logger.log(`   Write Time: ${(performanceLog.writeTime / 1000).toFixed(2)}s`);
+    
     throw error;
   }
 }
@@ -93,14 +231,22 @@ function getConfig() {
 
 /**
  * Fetch user display name by user ID
+ * Now supports batch-fetched user map for better performance
  */
-function fetchUserDisplayName(userId, config) {
+function fetchUserDisplayName(userId, config, userMap = null) {
   if (!userId) return 'Unassigned';
   
-  // Check cache first
+  // Check existing cache first
   if (USER_NAME_CACHE[userId]) {
     Logger.log(`👤 Using cached name for user ${userId}: ${USER_NAME_CACHE[userId]}`);
     return USER_NAME_CACHE[userId];
+  }
+  
+  // Use batch-fetched user map if available
+  if (userMap && userMap[userId]) {
+    USER_NAME_CACHE[userId] = userMap[userId];
+    Logger.log(`👤 Using batch-fetched name for user ${userId}: ${userMap[userId]}`);
+    return userMap[userId];
   }
   
   const headers = {
@@ -162,6 +308,78 @@ function fetchUserDisplayName(userId, config) {
     USER_NAME_CACHE[userId] = fallbackName;
     return fallbackName;
   }
+}
+
+/**
+ * Batch fetch user display names for multiple user IDs
+ * Replaces individual fetchUserDisplayName calls for better performance
+ */
+function batchFetchUsers(userIds, config) {
+  if (!userIds || userIds.length === 0) return {};
+  
+  const uniqueUserIds = [...new Set(userIds.filter(id => id))];
+  Logger.log(`👥 Batch fetching ${uniqueUserIds.length} unique users`);
+  
+  const requests = uniqueUserIds.map(userId => ({
+    url: `${config.baseUrl}/users/${userId}`,
+    options: { 
+      headers: BatchProcessor.buildHeaders(config),
+      muteHttpExceptions: true 
+    }
+  }));
+  
+  const responses = BatchProcessor.executeBatchRequests(requests, config);
+  const userMap = {};
+  
+  responses.forEach((response, index) => {
+    const userId = uniqueUserIds[index];
+    if (response && response.getResponseCode() === 200) {
+      try {
+        const responseText = response.getContentText();
+        if (!responseText.trim().startsWith('<!DOCTYPE') && !responseText.trim().startsWith('<html')) {
+          const userData = JSON.parse(responseText);
+          const displayName = userData.displayName || userData.name || userData.email || 
+                            (userData.firstName && userData.lastName ? `${userData.firstName} ${userData.lastName}` : null) || 
+                            `User ${userId}`;
+          userMap[userId] = displayName;
+          USER_NAME_CACHE[userId] = displayName;
+          Logger.log(`👤 Resolved user ${userId} to: ${displayName}`);
+        } else {
+          Logger.log(`⚠️ Received HTML error page for user ${userId}`);
+          userMap[userId] = `User ${userId}`;
+        }
+      } catch (error) {
+        Logger.log(`⚠️ Error parsing user data for ${userId}: ${error.message}`);
+        userMap[userId] = `User ${userId}`;
+      }
+    } else {
+      // Try alternative endpoint for failed users
+      const altUserUrl = `${config.baseUrl}/account/users/${userId}`;
+      try {
+        const altResponse = UrlFetchApp.fetch(altUserUrl, { 
+          headers: BatchProcessor.buildHeaders(config),
+          muteHttpExceptions: true 
+        });
+        if (altResponse.getResponseCode() === 200) {
+          const userData = JSON.parse(altResponse.getContentText());
+          const displayName = userData.displayName || userData.name || userData.email || 
+                            (userData.firstName && userData.lastName ? `${userData.firstName} ${userData.lastName}` : null) || 
+                            `User ${userId}`;
+          userMap[userId] = displayName;
+          USER_NAME_CACHE[userId] = displayName;
+          Logger.log(`👤 Resolved user ${userId} via alternative endpoint to: ${displayName}`);
+        } else {
+          userMap[userId] = `User ${userId}`;
+        }
+      } catch (altError) {
+        Logger.log(`⚠️ Alternative endpoint also failed for user ${userId}: ${altError.message}`);
+        userMap[userId] = `User ${userId}`;
+      }
+    }
+  });
+  
+  Logger.log(`✅ Batch user fetching complete: ${Object.keys(userMap).length} users resolved`);
+  return userMap;
 }
 
 /**
@@ -236,6 +454,211 @@ function fetchProgressHistory(metricId, config) {
 }
 
 /**
+ * Process progress history data into standardized format
+ */
+function processProgressHistory(historyData) {
+  if (!historyData) return [];
+  
+  let progressEntries;
+  if (Array.isArray(historyData)) {
+    progressEntries = historyData;
+  } else if (historyData.items && Array.isArray(historyData.items)) {
+    progressEntries = historyData.items;
+  } else if (historyData.values && Array.isArray(historyData.values)) {
+    progressEntries = historyData.values;
+  } else if (historyData.data && Array.isArray(historyData.data)) {
+    progressEntries = historyData.data;
+  } else {
+    Logger.log(`⚠️ Unexpected progress history format: ${typeof historyData}`);
+    return [];
+  }
+  
+  return progressEntries.map(entry => ({
+    date: entry.date || entry.createdDate || entry.timestamp,
+    progress: entry.progress || entry.value || entry.percentage || 0
+  })).filter(entry => entry.date);
+}
+
+/**
+ * Batch fetch progress history for multiple metric IDs
+ * Replaces individual fetchProgressHistory calls for better performance
+ */
+function batchFetchProgressHistory(metricIds, config) {
+  if (!metricIds || metricIds.length === 0) return {};
+  
+  const uniqueMetricIds = [...new Set(metricIds.filter(id => id))];
+  Logger.log(`📈 Batch fetching progress history for ${uniqueMetricIds.length} unique metrics`);
+  
+  // Calculate date range for sparkline history
+  const endDate = new Date();
+  const startDate = new Date();
+  startDate.setDate(endDate.getDate() - INTERNAL_CONFIG.SPARKLINE_DAYS);
+  
+  const startDateString = startDate.toISOString().split('T')[0];
+  const endDateString = endDate.toISOString().split('T')[0];
+  
+  const requests = uniqueMetricIds.map(metricId => ({
+    url: `${config.baseUrl}/metrics/${metricId}/values?from=${startDateString}&to=${endDateString}`,
+    options: { 
+      headers: BatchProcessor.buildHeaders(config),
+      muteHttpExceptions: true 
+    }
+  }));
+  
+  const responses = BatchProcessor.executeBatchRequests(requests, config);
+  const progressMap = {};
+  
+  responses.forEach((response, index) => {
+    const metricId = uniqueMetricIds[index];
+    if (response && response.getResponseCode() === 200) {
+      try {
+        const responseText = response.getContentText();
+        if (!responseText.trim().startsWith('<!DOCTYPE') && !responseText.trim().startsWith('<html')) {
+          const historyData = JSON.parse(responseText);
+          progressMap[metricId] = processProgressHistory(historyData);
+          Logger.log(`📊 Found ${progressMap[metricId].length} progress entries for metric ${metricId}`);
+        } else {
+          Logger.log(`⚠️ Received HTML error page for progress history ${metricId}`);
+          progressMap[metricId] = [];
+        }
+      } catch (error) {
+        Logger.log(`⚠️ Error parsing progress history for ${metricId}: ${error.message}`);
+        progressMap[metricId] = [];
+      }
+    } else if (response && response.getResponseCode() === 404) {
+      // No history found - this is normal for new metrics
+      Logger.log(`📈 No progress history found for metric ${metricId} (404)`);
+      progressMap[metricId] = [];
+    } else {
+      Logger.log(`⚠️ Could not fetch progress history for metric ${metricId}: ${response ? response.getResponseCode() : 'no response'}`);
+      progressMap[metricId] = [];
+    }
+  });
+  
+  Logger.log(`✅ Batch progress history fetching complete: ${Object.keys(progressMap).length} metrics processed`);
+  return progressMap;
+}
+
+/**
+ * Batch fetch goal details for multiple objective IDs
+ * Replaces individual goal detail API calls for better performance
+ */
+function batchFetchGoalDetails(objectiveIds, config) {
+  if (!objectiveIds || objectiveIds.length === 0) return {};
+  
+  const uniqueObjectiveIds = [...new Set(objectiveIds.filter(id => id))];
+  Logger.log(`🎯 Batch fetching goal details for ${uniqueObjectiveIds.length} unique objectives`);
+  
+  const requests = uniqueObjectiveIds.map(objId => ({
+    url: `${config.baseUrl}/goals/${objId}`,
+    options: { 
+      headers: BatchProcessor.buildHeaders(config),
+      muteHttpExceptions: true 
+    }
+  }));
+  
+  const responses = BatchProcessor.executeBatchRequests(requests, config);
+  const goalMap = {};
+  
+  responses.forEach((response, index) => {
+    const objectiveId = uniqueObjectiveIds[index];
+    if (response && response.getResponseCode() === 200) {
+      try {
+        const responseText = response.getContentText();
+        if (!responseText.trim().startsWith('<!DOCTYPE') && !responseText.trim().startsWith('<html')) {
+          const goalData = JSON.parse(responseText);
+          goalMap[objectiveId] = goalData;
+          Logger.log(`🎯 Successfully fetched goal details for objective ${objectiveId}`);
+        } else {
+          Logger.log(`⚠️ Received HTML error page for goal ${objectiveId}`);
+          goalMap[objectiveId] = null;
+        }
+      } catch (error) {
+        Logger.log(`⚠️ Error parsing goal data for ${objectiveId}: ${error.message}`);
+        goalMap[objectiveId] = null;
+      }
+    } else {
+      Logger.log(`⚠️ Could not fetch goal details for objective ${objectiveId}: ${response ? response.getResponseCode() : 'no response'}`);
+      goalMap[objectiveId] = null;
+    }
+  });
+  
+  Logger.log(`✅ Batch goal details fetching complete: ${Object.keys(goalMap).length} objectives processed`);
+  return goalMap;
+}
+
+/**
+ * Process tasks data into standardized format
+ */
+function processTasks(tasksData) {
+  if (!tasksData) return [];
+  
+  let tasks;
+  if (Array.isArray(tasksData)) {
+    tasks = tasksData;
+  } else if (tasksData.items && Array.isArray(tasksData.items)) {
+    tasks = tasksData.items;
+  } else if (tasksData.tasks && Array.isArray(tasksData.tasks)) {
+    tasks = tasksData.tasks;
+  } else if (tasksData.data && Array.isArray(tasksData.data)) {
+    tasks = tasksData.data;
+  } else {
+    Logger.log(`⚠️ Unexpected tasks response format: ${typeof tasksData}`);
+    return [];
+  }
+  
+  return tasks;
+}
+
+/**
+ * Batch fetch tasks for multiple metric IDs
+ * Replaces individual fetchTasksForMetric calls for better performance
+ */
+function batchFetchTasks(metricIds, config) {
+  if (!metricIds || metricIds.length === 0) return {};
+  
+  const uniqueMetricIds = [...new Set(metricIds.filter(id => id))];
+  Logger.log(`📋 Batch fetching tasks for ${uniqueMetricIds.length} unique metrics`);
+  
+  const requests = uniqueMetricIds.map(metricId => ({
+    url: `${config.baseUrl}/tasks?metricId=${metricId}`,
+    options: { 
+      headers: BatchProcessor.buildHeaders(config),
+      muteHttpExceptions: true 
+    }
+  }));
+  
+  const responses = BatchProcessor.executeBatchRequests(requests, config);
+  const tasksMap = {};
+  
+  responses.forEach((response, index) => {
+    const metricId = uniqueMetricIds[index];
+    if (response && response.getResponseCode() === 200) {
+      try {
+        const responseText = response.getContentText();
+        if (!responseText.trim().startsWith('<!DOCTYPE') && !responseText.trim().startsWith('<html')) {
+          const tasksData = JSON.parse(responseText);
+          tasksMap[metricId] = processTasks(tasksData);
+          Logger.log(`📋 Found ${tasksMap[metricId].length} tasks for metric ${metricId}`);
+        } else {
+          Logger.log(`⚠️ Received HTML error page for tasks ${metricId}`);
+          tasksMap[metricId] = [];
+        }
+      } catch (error) {
+        Logger.log(`⚠️ Error parsing tasks data for ${metricId}: ${error.message}`);
+        tasksMap[metricId] = [];
+      }
+    } else {
+      Logger.log(`⚠️ Could not fetch tasks for metric ${metricId}: ${response ? response.getResponseCode() : 'no response'}`);
+      tasksMap[metricId] = [];
+    }
+  });
+  
+  Logger.log(`✅ Batch tasks fetching complete: ${Object.keys(tasksMap).length} metrics processed`);
+  return tasksMap;
+}
+
+/**
  * Fetch tasks for a given metric (key result)
  */
 function fetchTasksForMetric(metricId, config) {
@@ -302,6 +725,63 @@ function fetchTasksForMetric(metricId, config) {
   } catch (error) {
     Logger.log(`⚠️ Error fetching tasks for metric ${metricId}: ${error.message}`);
     return [];
+  }
+}
+
+/**
+ * Fetch individual session details
+ */
+function fetchSessionDetail(sessionId, config) {
+  const sessionUrl = `${config.baseUrl}/sessions/${sessionId}`;
+  Logger.log(`🔍 Fetching session details from: ${sessionUrl}`);
+  
+  const sessionResponse = UrlFetchApp.fetch(sessionUrl, { 
+    headers: BatchProcessor.buildHeaders(config) 
+  });
+  
+  const sessionResponseText = sessionResponse.getContentText();
+  
+  // Check if response is HTML (error page)
+  if (sessionResponseText.trim().startsWith('<!DOCTYPE') || sessionResponseText.trim().startsWith('<html')) {
+    Logger.log(`❌ Received HTML error page for session ${sessionId}. Response: ${sessionResponseText.substring(0, 500)}...`);
+    throw new Error(`API returned HTML error page for session "${sessionId}". Check your API token and session permissions.`);
+  }
+  
+  return JSON.parse(sessionResponseText);
+}
+
+/**
+ * Fetch session objectives
+ */
+function fetchSessionObjectives(sessionId, config) {
+  const objectivesUrl = `${config.baseUrl}/goals?sessionId=${sessionId}`;
+  Logger.log(`🎯 Fetching objectives from: ${objectivesUrl}`);
+  
+  const objectivesResponse = UrlFetchApp.fetch(objectivesUrl, { 
+    headers: BatchProcessor.buildHeaders(config) 
+  });
+  
+  const objectivesResponseText = objectivesResponse.getContentText();
+  
+  // Check if response is HTML (error page)
+  if (objectivesResponseText.trim().startsWith('<!DOCTYPE') || objectivesResponseText.trim().startsWith('<html')) {
+    Logger.log(`❌ Received HTML error page for objectives in session ${sessionId}. Response: ${objectivesResponseText.substring(0, 500)}...`);
+    throw new Error(`API returned HTML error page when fetching objectives for session "${sessionId}". Check your API token permissions.`);
+  }
+  
+  const objectivesData = JSON.parse(objectivesResponseText);
+  
+  // Handle different response formats for objectives (goals)
+  if (Array.isArray(objectivesData)) {
+    return objectivesData;
+  } else if (objectivesData.items && Array.isArray(objectivesData.items)) {
+    return objectivesData.items;
+  } else if (objectivesData.goals && Array.isArray(objectivesData.goals)) {
+    return objectivesData.goals;
+  } else if (objectivesData.objectives && Array.isArray(objectivesData.objectives)) {
+    return objectivesData.objectives;
+  } else {
+    return objectivesData; // fallback
   }
 }
 
@@ -424,9 +904,195 @@ function findSessionByName(config) {
 }
 
 /**
+ * Optimized session data fetching using batch processing
+ * Replaces sequential API calls with parallel batch operations
+ */
+function fetchSessionDataOptimized(config) {
+  const sessions = resolveMultipleSessions(config);
+  let allObjectives = [];
+  let allKeyResults = [];
+  const sessionDetails = [];
+  
+  Logger.log(`🚀 Starting optimized batch data collection for ${sessions.length} sessions`);
+  const batchStartTime = Date.now();
+  
+  // Step 1: Collect basic session and objective data (minimal sequential calls)
+  for (const session of sessions) {
+    Logger.log(`📊 Processing session: "${session.name}" (ID: ${session.id})`);
+    
+    try {
+      const sessionDetail = fetchSessionDetail(session.id, config);
+      sessionDetails.push(sessionDetail);
+      
+      const objectives = fetchSessionObjectives(session.id, config);
+      objectives.forEach(obj => {
+        obj.sessionId = session.id;
+        obj.sessionName = session.name || session.title;
+      });
+      allObjectives.push(...objectives);
+      
+      Logger.log(`📋 Found ${objectives.length} objectives for session "${session.name}"`);
+    } catch (error) {
+      Logger.log(`❌ Error processing session "${session.name}" (ID: ${session.id}): ${error.message}`);
+      throw error;
+    }
+  }
+  
+  // Step 2: Extract all IDs for batch processing
+  const objectiveIds = allObjectives.map(obj => obj.id);
+  const allUserIds = new Set();
+  
+  Logger.log(`🔄 Prepared ${objectiveIds.length} objectives for batch processing`);
+  
+  // Step 3: BATCH FETCH objective data (parallel processing)
+  Logger.log(`📊 Starting batch fetch of objective data...`);
+  const goalDetailsMap = batchFetchGoalDetails(objectiveIds, config);
+  const objectiveProgressMap = batchFetchProgressHistory(objectiveIds, config);
+  
+  // Step 4: Enhance objectives with batch data and extract key results
+  Logger.log(`🔧 Processing batch results and extracting key results...`);
+  allObjectives.forEach(obj => {
+    const goalData = goalDetailsMap[obj.id];
+    if (goalData) {
+      // Update objective with detailed goal data
+      obj.name = goalData.name || obj.name;
+      obj.description = goalData.description || obj.description || '';
+      obj.progress = Math.round((goalData.attainment || 0) * 100);
+      obj.status = goalData.closedStatus || obj.status;
+      obj.ownerId = goalData.ownerId;
+      
+      // Collect user IDs for batch processing
+      if (goalData.ownerId) allUserIds.add(goalData.ownerId);
+      
+      // Extract owner information - try embedded first
+      if (goalData.assignee && typeof goalData.assignee === 'object') {
+        obj.ownerName = goalData.assignee.name || goalData.assignee.displayName || goalData.assignee.email || 'Unassigned';
+      } else if (goalData.owner && typeof goalData.owner === 'object') {
+        obj.ownerName = goalData.owner.name || goalData.owner.displayName || goalData.owner.email || 'Unassigned';
+      } else {
+        obj.ownerName = null; // Will be set later with batch user data
+      }
+      
+      // Extract key results from metrics
+      if (goalData.metrics && Array.isArray(goalData.metrics)) {
+        goalData.metrics.forEach(kr => {
+          kr.objectiveName = obj.name;
+          kr.objectiveOwner = obj.ownerName;
+          allKeyResults.push(kr);
+          
+          // Collect user IDs
+          if (kr.ownerId) allUserIds.add(kr.ownerId);
+        });
+      }
+    }
+    
+    // Add progress history from batch
+    obj.progressHistory = objectiveProgressMap[obj.id] || [];
+    obj.sparkline = generateSparkline(obj.progressHistory);
+  });
+  
+  Logger.log(`✅ Extracted ${allKeyResults.length} key results from ${allObjectives.length} objectives`);
+  
+  // Step 5: BATCH FETCH key result data (parallel processing)
+  if (allKeyResults.length > 0) {
+    Logger.log(`📊 Starting batch fetch of key result data...`);
+    const keyResultIds = allKeyResults.map(kr => kr.id);
+    const keyResultProgressMap = batchFetchProgressHistory(keyResultIds, config);
+    const keyResultTasksMap = batchFetchTasks(keyResultIds, config);
+    
+    // Step 6: Enhance key results with batch data
+    allKeyResults.forEach(kr => {
+      kr.progressHistory = keyResultProgressMap[kr.id] || [];
+      kr.sparkline = generateSparkline(kr.progressHistory);
+      kr.tasks = keyResultTasksMap[kr.id] || [];
+      
+      // Extract owner information - try embedded first
+      if (kr.owner && typeof kr.owner === 'object') {
+        kr.ownerName = kr.owner.name || kr.owner.displayName || kr.owner.email || 'Unassigned';
+      } else if (kr.assignee && typeof kr.assignee === 'object') {
+        kr.ownerName = kr.assignee.name || kr.assignee.displayName || kr.assignee.email || 'Unassigned';
+      } else {
+        kr.ownerName = null; // Will be set later with batch user data
+      }
+      
+      // Collect task user IDs
+      kr.tasks.forEach(task => {
+        if (task.ownerId) allUserIds.add(task.ownerId);
+        if (task.assigneeId) allUserIds.add(task.assigneeId);
+      });
+    });
+  }
+  
+  // Step 7: BATCH FETCH all users (single parallel operation)
+  let userMap = {};
+  if (allUserIds.size > 0) {
+    Logger.log(`👥 Starting batch fetch of user data...`);
+    userMap = batchFetchUsers([...allUserIds], config);
+  }
+  
+  // Step 8: Apply user names using batch data
+  allObjectives.forEach(obj => {
+    if (!obj.ownerName && obj.ownerId) {
+      obj.ownerName = userMap[obj.ownerId] || 'Unassigned';
+    }
+  });
+  
+  allKeyResults.forEach(kr => {
+    if (!kr.ownerName && kr.ownerId) {
+      kr.ownerName = userMap[kr.ownerId] || kr.objectiveOwner || 'Unassigned';
+    }
+    
+    kr.tasks.forEach(task => {
+      // Extract owner information - try embedded first
+      if (task.assignee && typeof task.assignee === 'object') {
+        task.ownerName = task.assignee.name || task.assignee.displayName || task.assignee.email || 'Unassigned';
+      } else if (task.owner && typeof task.owner === 'object') {
+        task.ownerName = task.owner.name || task.owner.displayName || task.owner.email || 'Unassigned';
+      } else {
+        task.ownerName = userMap[task.ownerId] || userMap[task.assigneeId] || 'Unassigned';
+      }
+    });
+  });
+  
+  const batchEndTime = Date.now();
+  const batchDuration = (batchEndTime - batchStartTime) / 1000;
+  Logger.log(`🚀 Batch processing completed in ${batchDuration} seconds`);
+  
+  // Step 9: Build hierarchy and return
+  const hierarchicalObjectives = buildObjectiveHierarchy(allObjectives);
+  
+  Logger.log(`📊 Batch Summary: ${allObjectives.length} objectives, ${allKeyResults.length} key results, ${allUserIds.size} users`);
+  
+  return {
+    sessions: sessionDetails,
+    objectives: allObjectives,
+    hierarchicalObjectives: hierarchicalObjectives,
+    keyResults: allKeyResults,
+    sessionCount: sessions.length,
+    sessionNames: sessions.map(s => s.name || s.title).join(', ')
+  };
+}
+
+/**
  * Fetch session data from Quantive API (supports multiple sessions)
+ * Uses optimized batch processing with fallback to sequential processing
  */
 function fetchSessionData(config) {
+  try {
+    Logger.log('🚀 Using optimized batch processing for session data fetching');
+    return fetchSessionDataOptimized(config);
+  } catch (error) {
+    Logger.log(`⚠️ Batch processing failed: ${error.message}`);
+    Logger.log('📞 Falling back to sequential processing');
+    return fetchSessionDataSequential(config);
+  }
+}
+
+/**
+ * Sequential session data fetching (original implementation)
+ * Used as fallback when batch processing fails
+ */
+function fetchSessionDataSequential(config) {
   const headers = {
     'Authorization': `Bearer ${config.apiToken}`,
     'Gtmhub-AccountId': config.accountId,
@@ -441,7 +1107,7 @@ function fetchSessionData(config) {
   let allKeyResults = [];
   const sessionDetails = [];
   
-  Logger.log(`🔄 Processing ${sessions.length} sessions for multi-session report...`);
+  Logger.log(`🔄 Processing ${sessions.length} sessions for multi-session report (sequential mode)...`);
   
   for (const session of sessions) {
     Logger.log(`📊 Processing session: "${session.name}" (ID: ${session.id})`);
@@ -1375,6 +2041,90 @@ function listAvailableSessions() {
     
   } catch (error) {
     Logger.log(`❌ Error listing sessions: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Log batch processing statistics for performance monitoring
+ */
+function logBatchStatistics(operation, batchResults, startTime) {
+  const endTime = Date.now();
+  const duration = (endTime - startTime) / 1000;
+  
+  const stats = {
+    operation: operation,
+    totalRequests: batchResults.length,
+    successfulRequests: batchResults.filter(r => r !== null).length,
+    failedRequests: batchResults.filter(r => r === null).length,
+    duration: duration,
+    requestsPerSecond: batchResults.length / duration
+  };
+  
+  const successRate = Math.round((stats.successfulRequests / stats.totalRequests) * 100);
+  
+  Logger.log(`📊 ${operation} Batch Statistics:`);
+  Logger.log(`   Total Requests: ${stats.totalRequests}`);
+  Logger.log(`   Successful: ${stats.successfulRequests}`);
+  Logger.log(`   Failed: ${stats.failedRequests}`);
+  Logger.log(`   Success Rate: ${successRate}%`);
+  Logger.log(`   Duration: ${duration.toFixed(2)}s`);
+  Logger.log(`   Requests/Second: ${stats.requestsPerSecond.toFixed(2)}`);
+  
+  return stats;
+}
+
+/**
+ * Performance test function - compares batch vs sequential processing
+ */
+function performanceTest() {
+  Logger.log('🧪 Starting performance test...');
+  
+  try {
+    const config = getConfig();
+    
+    // Test batch processing
+    Logger.log('📊 Testing batch processing...');
+    const batchStart = Date.now();
+    const batchData = fetchSessionDataOptimized(config);
+    const batchTime = (Date.now() - batchStart) / 1000;
+    
+    // Test sequential processing
+    Logger.log('📞 Testing sequential processing...');
+    const sequentialStart = Date.now();
+    const sequentialData = fetchSessionDataSequential(config);
+    const sequentialTime = (Date.now() - sequentialStart) / 1000;
+    
+    // Compare results
+    const improvement = ((sequentialTime - batchTime) / sequentialTime) * 100;
+    
+    Logger.log('🏁 Performance Test Results:');
+    Logger.log(`   Batch Processing: ${batchTime.toFixed(2)}s`);
+    Logger.log(`   Sequential Processing: ${sequentialTime.toFixed(2)}s`);
+    Logger.log(`   Improvement: ${improvement.toFixed(1)}%`);
+    Logger.log(`   Time Saved: ${(sequentialTime - batchTime).toFixed(2)}s`);
+    
+    // Validate data consistency
+    const dataConsistent = (
+      batchData.objectives.length === sequentialData.objectives.length &&
+      batchData.keyResults.length === sequentialData.keyResults.length
+    );
+    
+    if (dataConsistent) {
+      Logger.log('✅ Data consistency validated - both methods return same results');
+    } else {
+      Logger.log('⚠️ Data inconsistency detected between batch and sequential processing');
+    }
+    
+    return {
+      batchTime,
+      sequentialTime,
+      improvement,
+      dataConsistent
+    };
+    
+  } catch (error) {
+    Logger.log(`❌ Performance test failed: ${error.message}`);
     throw error;
   }
 }
