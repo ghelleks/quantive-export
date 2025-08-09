@@ -4,7 +4,7 @@
  * Pre-test credential checker
  * 
  * Runs before tests to validate credential setup and provide helpful guidance
- * Now checks config.gs instead of .env.test for unified credential management
+ * Checks environment variables for unified credential management
  */
 
 const { getCredentialManager } = require('./credentials');
@@ -16,19 +16,17 @@ function checkCredentialSetup() {
 
   const credManager = getCredentialManager();
   
-  // Check if config.gs file exists
-  const configPath = path.join(__dirname, '../../config.gs');
-  if (!fs.existsSync(configPath)) {
-    console.log('❌ config.gs file not found');
-    console.log('   📝 Create config.gs from config.example.gs template');
-    console.log('   📝 Then edit config.gs with real credentials\n');
-    
-    console.log('ℹ️  Unit tests will run with mocked data');
+  // Check environment-based credentials
+  if (!process.env.QUANTIVE_API_TOKEN || !process.env.QUANTIVE_ACCOUNT_ID) {
+    console.log('❌ Missing test credentials in environment');
+    console.log('   📝 Set QUANTIVE_API_TOKEN and QUANTIVE_ACCOUNT_ID');
+    console.log('   📝 Optionally set TEST_SESSION_NAME');
+    console.log('\nℹ️  Unit tests will run with mocked data');
     console.log('ℹ️  Integration tests will be skipped\n');
     return;
   }
 
-  console.log('✅ config.gs file found');
+  console.log('✅ Test credentials found in environment');
 
   // Check credential validity
   if (credManager.canRunIntegrationTests()) {
@@ -61,9 +59,8 @@ function checkCredentialSetup() {
     }
     
     console.log('\n📝 To enable integration tests:');
-    console.log('   1. Edit config.gs with real test credentials');
-    console.log('   2. Replace placeholder values with actual credentials');
-    console.log('   3. Ensure you have test sessions in your Quantive account');
+    console.log('   1. Set QUANTIVE_API_TOKEN and QUANTIVE_ACCOUNT_ID env variables');
+    console.log('   2. Ensure the account has accessible sessions for testing');
   }
 
   console.log('\n🚀 Test setup check complete\n');

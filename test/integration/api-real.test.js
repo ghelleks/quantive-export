@@ -2,7 +2,7 @@
  * Integration Tests with Real Quantive API
  * 
  * These tests make actual API calls to Quantive using real credentials
- * They will be skipped if credentials are not available in config.gs
+ * They will be skipped if credentials are not available in environment variables
  */
 
 const { requireRealCredentials, canRunIntegrationTests, getTestSessionData, getApiClientConfig } = require('../setup/credentials');

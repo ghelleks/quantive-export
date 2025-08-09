@@ -7,11 +7,12 @@
  * 3. Generate sparklines showing 14-day progress trends
  * 4. Write formatted report to Google Doc
  * 5. Can be scheduled to run automatically
- * 
- * Setup: 
- * 1. Copy config.example.gs to config.gs
- * 2. Fill in your actual credentials in config.gs
- * 3. Run generateQuantiveReport() to test
+ *
+ * Setup (no config file):
+ * 1. Open the Apps Script editor → Project Settings → Script properties
+ * 2. Add required properties: QUANTIVE_API_TOKEN, QUANTIVE_ACCOUNT_ID, SESSIONS
+ * 3. Add at least one export target: GOOGLE_DOC_ID or TEXT_FILE_URL/TEXT_FILE_ID
+ * 4. Run generateQuantiveReport() to test
  */
 
 // Internal configuration (sparkline settings)
@@ -104,135 +105,239 @@ const BatchProcessor = {
 
 /**
  * Main function - generates a Quantive report
- * Run this manually or set up a trigger to run it automatically
- * Now includes performance timing and validation
+ * Minimal logging; optimized for Apps Script
  */
 function generateQuantiveReport() {
-  const startTime = Date.now();
-  let performanceLog = {
-    totalTime: 0,
-    configTime: 0,
-    dataFetchTime: 0,
-    statsTime: 0,
-    writeTime: 0,
-    batchProcessingUsed: false,
-    apiCallCount: 0,
-    recordsProcessed: 0
-  };
-  
-  try {
-    Logger.log('🎯 Starting Quantive report generation with performance monitoring...');
-    
-    // Get configuration
-    const configStart = Date.now();
-    const config = getConfig();
-    performanceLog.configTime = Date.now() - configStart;
-    
-    // Fetch data from Quantive
-    const dataStart = Date.now();
-    const sessionData = fetchSessionData(config);
-    performanceLog.dataFetchTime = Date.now() - dataStart;
-    
-    // Log performance metrics
-    performanceLog.recordsProcessed = {
-      sessions: sessionData.sessionCount || 0,
-      objectives: sessionData.objectives?.length || 0,
-      keyResults: sessionData.keyResults?.length || 0
-    };
-    
-    // Calculate statistics
-    const statsStart = Date.now();
-    const stats = calculateStats(sessionData, config);
-    performanceLog.statsTime = Date.now() - statsStart;
-    
-    // Write report to Google Doc
-    const writeStart = Date.now();
+  Logger.log('Starting Quantive report generation...');
+  const config = getConfig();
+  const sessionData = fetchSessionData(config);
+  const stats = calculateStats(sessionData, config);
+  if (config.googleDocId) {
     writeReport(config.googleDocId, sessionData, stats, config);
-    performanceLog.writeTime = Date.now() - writeStart;
-    
-    // Calculate total time
-    const endTime = Date.now();
-    performanceLog.totalTime = (endTime - startTime) / 1000;
-    
-    // Log performance summary
-    Logger.log('🚀 Performance Summary:');
-    Logger.log(`   Total Time: ${performanceLog.totalTime.toFixed(2)} seconds`);
-    Logger.log(`   Config Time: ${(performanceLog.configTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Data Fetch Time: ${(performanceLog.dataFetchTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Stats Time: ${(performanceLog.statsTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Write Time: ${(performanceLog.writeTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Records Processed: ${JSON.stringify(performanceLog.recordsProcessed)}`);
-    
-    // Performance validation
-    if (performanceLog.totalTime < 30) {
-      Logger.log('✅ Excellent performance! Report generated in under 30 seconds.');
-    } else if (performanceLog.totalTime < 60) {
-      Logger.log('🟡 Good performance. Report generated in under 1 minute.');
-    } else {
-      Logger.log('🔴 Performance warning: Report took over 1 minute to generate.');
+  }
+  if (config.textFileId) {
+    writePlainTextSnapshot(config.textFileId, sessionData, stats, config);
+  }
+  Logger.log('Report generated.');
+}
+
+/**
+ * Build a plain text snapshot string (markdown-friendly)
+ */
+function buildPlainTextSnapshot(data, stats, config) {
+  const lines = [];
+  const title = data.sessionCount > 1
+    ? `# Quantive Snapshot: ${data.sessionNames}`
+    : `# Quantive Snapshot: ${data.sessions[0].name}`;
+  lines.push(title);
+  lines.push('');
+  lines.push(`Generated: ${new Date().toISOString()}`);
+  lines.push('');
+  lines.push('## Executive Summary');
+  lines.push(`- Overall Progress: ${stats.overallProgress}%`);
+  lines.push(`- Total Objectives: ${stats.totalObjectives}`);
+  lines.push(`- Total Key Results: ${stats.totalKeyResults}`);
+  lines.push(`- Recent Updates: ${stats.recentUpdates} (last ${config.lookbackDays} days)`);
+  if (stats.hierarchyStats) {
+    lines.push(`- Hierarchy Levels: ${stats.hierarchyStats.totalLevels}`);
+    lines.push(`- Root Objectives: ${stats.hierarchyStats.rootObjectives}`);
+    lines.push(`- Leaf Objectives: ${stats.hierarchyStats.leafObjectives}`);
+  }
+  lines.push('');
+  lines.push('## Status Breakdown');
+  Object.entries(stats.statusCounts || {}).forEach(([status, count]) => {
+    const pct = stats.totalKeyResults > 0 ? Math.round((count / stats.totalKeyResults) * 100) : 0;
+    lines.push(`- ${status}: ${count} (${pct}%)`);
+  });
+  lines.push('');
+  lines.push('## Objectives & Key Results');
+  const objectivesToProcess = data.hierarchicalObjectives || data.objectives.map((obj, i) => ({ ...obj, level: 0, hierarchicalIndex: i + 1 }));
+  objectivesToProcess.forEach((objective) => {
+    const indent = '  '.repeat(objective.level || 0);
+    const objKeyResults = data.keyResults.filter(kr => kr.goalId === objective.id);
+    const objProgress = objKeyResults.length > 0
+      ? Math.round(objKeyResults.reduce((sum, kr) => sum + (kr.progress || 0), 0) / objKeyResults.length)
+      : objective.progress || 0;
+    lines.push(`${indent}- ${objective.name} (Progress: ${objProgress}% | Owner: ${objective.ownerName || 'Unassigned'}${data.sessionCount > 1 ? ` | Session: ${objective.sessionName}` : ''})`);
+    if (objective.description && objective.description.trim()) {
+      lines.push(`${indent}  - Description: ${objective.description}`);
     }
-    
-    Logger.log('✅ Report generated successfully!');
-    Logger.log(`📄 Report written to: ${config.googleDocId}`);
-    
-    return {
-      success: true,
-      performanceLog: performanceLog,
-      docId: config.googleDocId
-    };
-    
-  } catch (error) {
-    const endTime = Date.now();
-    performanceLog.totalTime = (endTime - startTime) / 1000;
-    
-    Logger.log(`❌ Error after ${performanceLog.totalTime.toFixed(2)} seconds: ${error.message}`);
-    Logger.log('🔍 Performance log at time of error:');
-    Logger.log(`   Config Time: ${(performanceLog.configTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Data Fetch Time: ${(performanceLog.dataFetchTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Stats Time: ${(performanceLog.statsTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Write Time: ${(performanceLog.writeTime / 1000).toFixed(2)}s`);
-    
-    throw error;
+    if (objKeyResults.length > 0) {
+      objKeyResults.forEach((kr) => {
+        const krProgress = kr.progress || kr.attainment * 100 || 0;
+        const krOwner = kr.ownerName || kr.objectiveOwner || 'Unassigned';
+        lines.push(`${indent}  - KR: ${kr.name} (Progress: ${Math.round(krProgress)}% | Owner: ${krOwner})`);
+        if (kr.description && kr.description.trim()) {
+          lines.push(`${indent}    - Note: ${kr.description}`);
+        }
+        if (kr.tasks && kr.tasks.length > 0) {
+          kr.tasks.forEach(task => {
+            const taskOwner = task.ownerName || 'Unassigned';
+            const taskStatus = task.status || task.state || 'Unknown';
+            lines.push(`${indent}    - Task: ${task.name || task.title} (Owner: ${taskOwner} | Status: ${taskStatus})`);
+          });
+        }
+      });
+    } else {
+      lines.push(`${indent}  - Key Results: None`);
+    }
+  });
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
+ * Overwrite a Drive text file with the snapshot content
+ */
+function writePlainTextSnapshot(fileId, data, stats, config) {
+  try {
+    const content = buildPlainTextSnapshot(data, stats, config);
+    const file = DriveApp.getFileById(fileId);
+    file.setContent(content);
+    file.setName('quantive-snapshot.md');
+    Logger.log(`Plain text snapshot written to file ID: ${fileId}`);
+  } catch (e) {
+    Logger.log(`Failed to write plain text snapshot: ${e.message}`);
+    throw e;
   }
 }
 
 /**
- * Get configuration from config.gs
+ * Get configuration from Script Properties (no config.gs)
+  * Required properties (Script Properties):
+ *  - QUANTIVE_API_TOKEN
+ *  - QUANTIVE_ACCOUNT_ID
+ *  - SESSIONS (CSV or JSON array)
+  *  - At least one export target: GOOGLE_DOC_ID or TEXT_FILE_URL/TEXT_FILE_ID
+ * Optional:
+ *  - QUANTIVE_BASE_URL (default https://app.us.quantive.com/results/api/v1)
+ *  - LOOKBACK_DAYS (default 7)
+ *  - TEXT_FILE_URL or TEXT_FILE_ID (for plain-text export)
  */
 function getConfig() {
-  // Check if CONFIG is available from config.gs
-  if (typeof CONFIG === 'undefined') {
-    throw new Error('CONFIG not found. Please create config.gs from config.example.gs and fill in your credentials.');
+  const props = PropertiesService.getScriptProperties();
+  const get = (key) => (props.getProperty(key) || '').trim();
+
+  const errors = [];
+
+  const apiToken = get('QUANTIVE_API_TOKEN');
+  if (!apiToken) errors.push('- QUANTIVE_API_TOKEN is missing');
+
+  const accountId = get('QUANTIVE_ACCOUNT_ID');
+  if (!accountId) errors.push('- QUANTIVE_ACCOUNT_ID is missing');
+
+  const sessionsRaw = get('SESSIONS');
+  let sessions = [];
+  if (!sessionsRaw) {
+    errors.push('- SESSIONS is missing (provide comma-separated names/UUIDs or a JSON array)');
+  } else {
+    try {
+      if (sessionsRaw.trim().startsWith('[')) {
+        const parsed = JSON.parse(sessionsRaw);
+        if (Array.isArray(parsed)) sessions = parsed.map(String).map(s => s.trim()).filter(Boolean);
+      } else {
+        sessions = sessionsRaw.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    } catch (e) {
+      errors.push('- SESSIONS could not be parsed; use CSV or JSON array');
+    }
   }
-  
-  // Validate required properties
-  if (!CONFIG.QUANTIVE_API_TOKEN || CONFIG.QUANTIVE_API_TOKEN === 'your-actual-api-token-here') {
-    throw new Error('QUANTIVE_API_TOKEN not set in config.gs');
+
+  const googleDocId = get('GOOGLE_DOC_ID');
+
+  // Optional values
+  const baseUrlStr = get('QUANTIVE_BASE_URL');
+  const baseUrl = baseUrlStr || 'https://app.us.quantive.com/results/api/v1';
+  if (baseUrlStr && !/^https?:\/\//i.test(baseUrlStr)) {
+    errors.push('- QUANTIVE_BASE_URL must start with http(s)://');
   }
-  if (!CONFIG.QUANTIVE_ACCOUNT_ID || CONFIG.QUANTIVE_ACCOUNT_ID === 'your-actual-account-id-here') {
-    throw new Error('QUANTIVE_ACCOUNT_ID not set in config.gs');
+
+  const lookbackDaysStr = get('LOOKBACK_DAYS');
+  let lookbackDays = 7;
+  if (lookbackDaysStr) {
+    if (!/^\d+$/.test(lookbackDaysStr)) {
+      errors.push('- LOOKBACK_DAYS must be an integer');
+    } else {
+      lookbackDays = parseInt(lookbackDaysStr, 10);
+      if (lookbackDays <= 0 || lookbackDays > 365) {
+        errors.push('- LOOKBACK_DAYS must be between 1 and 365');
+      }
+    }
   }
-  if (!CONFIG.SESSIONS || CONFIG.SESSIONS.length === 0) {
-    throw new Error('SESSIONS not set in config.gs - must be an array of session names or UUIDs');
+
+  // Optional plain-text export support
+  let textFileId = null;
+  const textFileUrl = get('TEXT_FILE_URL');
+  const textFileIdProp = get('TEXT_FILE_ID');
+  if (textFileUrl) {
+    textFileId = deriveDriveFileIdFromUrl(textFileUrl);
+    if (!textFileId) {
+      errors.push('- TEXT_FILE_URL could not be parsed into a Drive file ID. Use a standard sharing URL or set TEXT_FILE_ID directly');
+    }
   }
-  if (!CONFIG.GOOGLE_DOC_ID) {
-    throw new Error('GOOGLE_DOC_ID not set in config.gs');
+  if (!textFileId && textFileIdProp) textFileId = textFileIdProp;
+  if (textFileIdProp && !/^[A-Za-z0-9_-]{10,}$/.test(textFileIdProp)) {
+    errors.push('- TEXT_FILE_ID does not look like a valid Drive file ID');
   }
-  
-  // Normalize sessions to array format
-  let sessions = CONFIG.SESSIONS;
-  if (typeof sessions === 'string') {
-    sessions = [sessions]; // Convert single session to array
+
+  if (googleDocId && !/^[A-Za-z0-9_-]{10,}$/.test(googleDocId)) {
+    errors.push('- GOOGLE_DOC_ID does not look like a valid Google Doc ID');
   }
-  
+
+  // Ensure at least one export target is configured
+  if (!googleDocId && !textFileId) {
+    errors.push('- Provide at least one export target: GOOGLE_DOC_ID or TEXT_FILE_URL/TEXT_FILE_ID');
+  }
+
+  if (errors.length > 0) {
+    const help = [
+      'Missing required configuration. Set Script Properties in Apps Script:',
+      '  - Open Extensions → Apps Script',
+      '  - In the editor, go to Project Settings → Script properties → Add property',
+      '  - Required: QUANTIVE_API_TOKEN, QUANTIVE_ACCOUNT_ID, SESSIONS',
+      '  - Also required: at least one export target (GOOGLE_DOC_ID or TEXT_FILE_URL/TEXT_FILE_ID)',
+      '  - Optional: QUANTIVE_BASE_URL, LOOKBACK_DAYS',
+      'Example values:',
+      '  SESSIONS: Q3 2025, RHELBU Annual 2025  (CSV)  OR  ["Q3 2025","RHELBU Annual 2025"] (JSON)'
+    ].join('\n');
+    throw new Error(`${errors.join('\n')}
+${help}`);
+  }
+
   return {
-    apiToken: CONFIG.QUANTIVE_API_TOKEN,
-    accountId: CONFIG.QUANTIVE_ACCOUNT_ID,
-    sessions: sessions, // Array of session names/UUIDs
-    googleDocId: CONFIG.GOOGLE_DOC_ID,
-    baseUrl: CONFIG.QUANTIVE_BASE_URL || 'https://app.us.quantive.com/results/api/v1',
-    lookbackDays: CONFIG.LOOKBACK_DAYS || 7
+    apiToken,
+    accountId,
+    sessions,
+    googleDocId: googleDocId || null,
+    baseUrl,
+    lookbackDays,
+    textFileId: textFileId || null
   };
+}
+
+/**
+ * Derive Drive file ID from a sharing URL or return as-is if it's already an ID
+ */
+function deriveDriveFileIdFromUrl(urlOrId) {
+  if (!urlOrId) return null;
+  // If it looks like a bare ID (no slashes), return it
+  if (!/\//.test(urlOrId) && /^[A-Za-z0-9_-]{10,}$/.test(urlOrId)) {
+    return urlOrId;
+  }
+  // Common Drive URL formats
+  // 1) https://drive.google.com/file/d/<ID>/view?usp=sharing
+  let m = urlOrId.match(/\/file\/d\/([A-Za-z0-9_-]+)\//);
+  if (m && m[1]) return m[1];
+  // 2) https://drive.google.com/open?id=<ID>
+  m = urlOrId.match(/[?&]id=([A-Za-z0-9_-]+)/);
+  if (m && m[1]) return m[1];
+  // 3) Any URL where the last path segment is the ID (fallback)
+  try {
+    const url = UrlFetchApp ? urlOrId : urlOrId; // keep linter happy
+  } catch (e) {}
+  const parts = urlOrId.split(/[/?#&=]/).filter(Boolean);
+  const candidate = parts.find(p => /^[A-Za-z0-9_-]{10,}$/.test(p));
+  return candidate || null;
 }
 
 /**
@@ -1869,14 +1974,13 @@ function writeReport(docId, data, stats, config) {
  * Setup function - run this once to configure the script
  */
 function setup() {
-  Logger.log('🔧 Setup Instructions:');
+  Logger.log('🔧 Setup Instructions (no config files):');
   Logger.log('');
-  Logger.log('1. Copy config.example.gs to config.gs');
-  Logger.log('2. Fill in your actual credentials in config.gs:');
+  Logger.log('1. Open Project Settings → Script properties and add:');
   Logger.log('   - QUANTIVE_API_TOKEN: Your API token from Quantive');
   Logger.log('   - QUANTIVE_ACCOUNT_ID: Your account ID');
-  Logger.log('   - SESSION_NAME: The name of the session (e.g., "Q4 2024 OKRs")');
-  Logger.log('   - GOOGLE_DOC_ID: The Google Doc to write reports to');
+  Logger.log('   - SESSIONS: CSV or JSON array of session names/UUIDs');
+  Logger.log('   - Export target: GOOGLE_DOC_ID or TEXT_FILE_URL/TEXT_FILE_ID');
   Logger.log('');
   Logger.log('3. Run listAvailableSessions() to see available session names');
   Logger.log('4. Run generateQuantiveReport() to test');

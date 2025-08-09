@@ -35,7 +35,7 @@ This tool will help teams and leadership get a quick, regular pulse on OKR progr
 
 | ID | Requirement Description | Priority |
 | :---- | :---- | :---- |
-| **FR-01** | **Authentication:** The script must securely authenticate with the Quantive REST API using a provided API token and Account ID. These credentials will be stored securely within Google Apps Script's PropertiesService with encryption. | Must-Have |
+| **FR-01** | **Authentication:** The script must securely authenticate with the Quantive REST API using a provided API token and Account ID. These credentials will be provided via Google Apps Script Script Properties. | Must-Have |
 | **FR-02** | **Session Selection:** A user must be able to easily configure the script to target a specific Quantive Session by its unique ID. | Must-Have |
 | **FR-03** | **Data Fetching:** The script must fetch all Objectives and their associated Key Results for the specified Quantive Session. This includes details like name, owner, current value, target value, and status. | Must-Have |
 | **FR-04** | **Overall Progress Calculation:** The script shall calculate the overall percentage of completion for the entire Session based on the progress of its Key Results. | Must-Have |
@@ -45,8 +45,8 @@ This tool will help teams and leadership get a quick, regular pulse on OKR progr
 | **FR-08** | **Report Generation (Google Sheet):** The script must be able to append a new row to a specified Google Sheet. Each column will represent a piece of data (e.g., Date, Overall Progress, \# On Track, \# At Risk, Recent Activity Summary). | Could-Have |
 | **FR-09** | **Automated Trigger:** The script must be configurable to run automatically on a schedule (e.g., every Monday at 9 AM) using Google App Script's time-driven triggers. | Must-Have |
 | **FR-10** | **Error Handling:** The script should gracefully handle potential errors, such as API connection failures or invalid configuration, and log these errors for troubleshooting. | Must-Have |
-| **FR-11** | **Configuration Management:** The script must provide secure configuration management with support for multiple environments (development, staging, production) and validation of API credentials. | Must-Have |
-| **FR-12** | **Configuration Templates:** The script must include comprehensive configuration templates and examples to guide users through secure setup. | Should-Have |
+| **FR-11** | **Configuration Management:** The script must read configuration from Script Properties and validate all required values at runtime, providing helpful error messages when missing. | Must-Have |
+| **FR-12** | **Plain Text Export:** The script should optionally write a Markdown-friendly snapshot to a Google Drive text file when a file URL or ID is provided. | Should-Have |
 | **FR-13** | **Credential Validation:** The script must validate API token formats, account IDs, and session IDs to prevent common configuration errors. | Should-Have |
 | **FR-14** | **Configuration Import/Export:** The script should provide utilities to securely import and export configuration settings while protecting sensitive credentials. | Could-Have |
 
@@ -54,9 +54,9 @@ This tool will help teams and leadership get a quick, regular pulse on OKR progr
 
 | ID | Requirement Description | Priority |
 | :---- | :---- | :---- |
-| **NFR-01** | **Security:** The Quantive API token must be stored securely using Google Apps Script's PropertiesService with encryption and never be hard-coded directly in the script file. Configuration templates must use placeholder values only. | Must-Have |
+| **NFR-01** | **Security:** The Quantive API token must be provided via Script Properties and never be hard-coded directly in the script file. | Must-Have |
 | **NFR-02** | **Performance:** The script should execute within the Google Apps Script execution time limits (currently 6 minutes for consumer accounts). It should make efficient API calls to avoid rate limiting with configurable delays. | Must-Have |
-| **NFR-03** | **Configurability:** Key parameters such as the Quantive Session ID, API credentials, Google Doc/Sheet ID, and the recent activity lookback period should be easily configurable through Google Apps Script properties with environment-specific settings support. | Must-Have |
+| **NFR-03** | **Configurability:** Key parameters such as the Quantive Session ID(s), API credentials, Google Doc ID, plain text file URL/ID, and the recent activity lookback period should be configurable through Script Properties. | Must-Have |
 | **NFR-04** | **Readability & Maintainability:** The code should be well-commented with comprehensive JSDoc documentation and organized into logical classes and functions to allow for easy understanding and future modifications. | Must-Have |
 | **NFR-05** | **Environment Management:** The script must support multiple deployment environments (development, staging, production) with environment-specific configuration settings and rate limiting. | Should-Have |
 | **NFR-06** | **Credential Security:** API tokens and sensitive credentials must be validated for format correctness and protected from accidental exposure in logs or error messages. | Must-Have |
