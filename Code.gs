@@ -7,11 +7,12 @@
  * 3. Generate sparklines showing 14-day progress trends
  * 4. Write formatted report to Google Doc
  * 5. Can be scheduled to run automatically
- * 
- * Setup: 
- * 1. Copy config.example.gs to config.gs
- * 2. Fill in your actual credentials in config.gs
- * 3. Run generateQuantiveReport() to test
+ *
+ * Setup (no config file):
+ * 1. Open the Apps Script editor → Project Settings → Script properties
+ * 2. Add required properties: QUANTIVE_API_TOKEN, QUANTIVE_ACCOUNT_ID, SESSIONS
+ * 3. Add at least one export target: GOOGLE_DOC_ID or TEXT_FILE_URL/TEXT_FILE_ID
+ * 4. Run generateQuantiveReport() to test
  */
 
 // Internal configuration (sparkline settings)
@@ -104,135 +105,239 @@ const BatchProcessor = {
 
 /**
  * Main function - generates a Quantive report
- * Run this manually or set up a trigger to run it automatically
- * Now includes performance timing and validation
+ * Minimal logging; optimized for Apps Script
  */
 function generateQuantiveReport() {
-  const startTime = Date.now();
-  let performanceLog = {
-    totalTime: 0,
-    configTime: 0,
-    dataFetchTime: 0,
-    statsTime: 0,
-    writeTime: 0,
-    batchProcessingUsed: false,
-    apiCallCount: 0,
-    recordsProcessed: 0
-  };
-  
-  try {
-    Logger.log('🎯 Starting Quantive report generation with performance monitoring...');
-    
-    // Get configuration
-    const configStart = Date.now();
-    const config = getConfig();
-    performanceLog.configTime = Date.now() - configStart;
-    
-    // Fetch data from Quantive
-    const dataStart = Date.now();
-    const sessionData = fetchSessionData(config);
-    performanceLog.dataFetchTime = Date.now() - dataStart;
-    
-    // Log performance metrics
-    performanceLog.recordsProcessed = {
-      sessions: sessionData.sessionCount || 0,
-      objectives: sessionData.objectives?.length || 0,
-      keyResults: sessionData.keyResults?.length || 0
-    };
-    
-    // Calculate statistics
-    const statsStart = Date.now();
-    const stats = calculateStats(sessionData, config);
-    performanceLog.statsTime = Date.now() - statsStart;
-    
-    // Write report to Google Doc
-    const writeStart = Date.now();
+  Logger.log('Starting Quantive report generation...');
+  const config = getConfig();
+  const sessionData = fetchSessionData(config);
+  const stats = calculateStats(sessionData, config);
+  if (config.googleDocId) {
     writeReport(config.googleDocId, sessionData, stats, config);
-    performanceLog.writeTime = Date.now() - writeStart;
-    
-    // Calculate total time
-    const endTime = Date.now();
-    performanceLog.totalTime = (endTime - startTime) / 1000;
-    
-    // Log performance summary
-    Logger.log('🚀 Performance Summary:');
-    Logger.log(`   Total Time: ${performanceLog.totalTime.toFixed(2)} seconds`);
-    Logger.log(`   Config Time: ${(performanceLog.configTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Data Fetch Time: ${(performanceLog.dataFetchTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Stats Time: ${(performanceLog.statsTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Write Time: ${(performanceLog.writeTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Records Processed: ${JSON.stringify(performanceLog.recordsProcessed)}`);
-    
-    // Performance validation
-    if (performanceLog.totalTime < 30) {
-      Logger.log('✅ Excellent performance! Report generated in under 30 seconds.');
-    } else if (performanceLog.totalTime < 60) {
-      Logger.log('🟡 Good performance. Report generated in under 1 minute.');
-    } else {
-      Logger.log('🔴 Performance warning: Report took over 1 minute to generate.');
+  }
+  if (config.textFileId) {
+    writePlainTextSnapshot(config.textFileId, sessionData, stats, config);
+  }
+  Logger.log('Report generated.');
+}
+
+/**
+ * Build a plain text snapshot string (markdown-friendly)
+ */
+function buildPlainTextSnapshot(data, stats, config) {
+  const lines = [];
+  const title = data.sessionCount > 1
+    ? `# Quantive Snapshot: ${data.sessionNames}`
+    : `# Quantive Snapshot: ${data.sessions[0].name}`;
+  lines.push(title);
+  lines.push('');
+  lines.push(`Generated: ${new Date().toISOString()}`);
+  lines.push('');
+  lines.push('## Executive Summary');
+  lines.push(`- Overall Progress: ${stats.overallProgress}%`);
+  lines.push(`- Total Objectives: ${stats.totalObjectives}`);
+  lines.push(`- Total Key Results: ${stats.totalKeyResults}`);
+  lines.push(`- Recent Updates: ${stats.recentUpdates} (last ${config.lookbackDays} days)`);
+  if (stats.hierarchyStats) {
+    lines.push(`- Hierarchy Levels: ${stats.hierarchyStats.totalLevels}`);
+    lines.push(`- Root Objectives: ${stats.hierarchyStats.rootObjectives}`);
+    lines.push(`- Leaf Objectives: ${stats.hierarchyStats.leafObjectives}`);
+  }
+  lines.push('');
+  lines.push('## Status Breakdown');
+  Object.entries(stats.statusCounts || {}).forEach(([status, count]) => {
+    const pct = stats.totalKeyResults > 0 ? Math.round((count / stats.totalKeyResults) * 100) : 0;
+    lines.push(`- ${status}: ${count} (${pct}%)`);
+  });
+  lines.push('');
+  lines.push('## Objectives & Key Results');
+  const objectivesToProcess = data.hierarchicalObjectives || data.objectives.map((obj, i) => ({ ...obj, level: 0, hierarchicalIndex: i + 1 }));
+  objectivesToProcess.forEach((objective) => {
+    const indent = '  '.repeat(objective.level || 0);
+    const objKeyResults = data.keyResults.filter(kr => kr.goalId === objective.id);
+    const objProgress = objKeyResults.length > 0
+      ? Math.round(objKeyResults.reduce((sum, kr) => sum + (kr.progress || 0), 0) / objKeyResults.length)
+      : objective.progress || 0;
+    lines.push(`${indent}- ${objective.name} (Progress: ${objProgress}% | Owner: ${objective.ownerName || 'Unassigned'}${data.sessionCount > 1 ? ` | Session: ${objective.sessionName}` : ''})`);
+    if (objective.description && objective.description.trim()) {
+      lines.push(`${indent}  - Description: ${objective.description}`);
     }
-    
-    Logger.log('✅ Report generated successfully!');
-    Logger.log(`📄 Report written to: ${config.googleDocId}`);
-    
-    return {
-      success: true,
-      performanceLog: performanceLog,
-      docId: config.googleDocId
-    };
-    
-  } catch (error) {
-    const endTime = Date.now();
-    performanceLog.totalTime = (endTime - startTime) / 1000;
-    
-    Logger.log(`❌ Error after ${performanceLog.totalTime.toFixed(2)} seconds: ${error.message}`);
-    Logger.log('🔍 Performance log at time of error:');
-    Logger.log(`   Config Time: ${(performanceLog.configTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Data Fetch Time: ${(performanceLog.dataFetchTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Stats Time: ${(performanceLog.statsTime / 1000).toFixed(2)}s`);
-    Logger.log(`   Write Time: ${(performanceLog.writeTime / 1000).toFixed(2)}s`);
-    
-    throw error;
+    if (objKeyResults.length > 0) {
+      objKeyResults.forEach((kr) => {
+        const krProgress = kr.progress || kr.attainment * 100 || 0;
+        const krOwner = kr.ownerName || kr.objectiveOwner || 'Unassigned';
+        lines.push(`${indent}  - KR: ${kr.name} (Progress: ${Math.round(krProgress)}% | Owner: ${krOwner})`);
+        if (kr.description && kr.description.trim()) {
+          lines.push(`${indent}    - Note: ${kr.description}`);
+        }
+        if (kr.tasks && kr.tasks.length > 0) {
+          kr.tasks.forEach(task => {
+            const taskOwner = task.ownerName || 'Unassigned';
+            const taskStatus = task.status || task.state || 'Unknown';
+            lines.push(`${indent}    - Task: ${task.name || task.title} (Owner: ${taskOwner} | Status: ${taskStatus})`);
+          });
+        }
+      });
+    } else {
+      lines.push(`${indent}  - Key Results: None`);
+    }
+  });
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
+ * Overwrite a Drive text file with the snapshot content
+ */
+function writePlainTextSnapshot(fileId, data, stats, config) {
+  try {
+    const content = buildPlainTextSnapshot(data, stats, config);
+    const file = DriveApp.getFileById(fileId);
+    file.setContent(content);
+    file.setName('quantive-snapshot.md');
+    Logger.log(`Plain text snapshot written to file ID: ${fileId}`);
+  } catch (e) {
+    Logger.log(`Failed to write plain text snapshot: ${e.message}`);
+    throw e;
   }
 }
 
 /**
- * Get configuration from config.gs
+ * Get configuration from Script Properties (no config.gs)
+  * Required properties (Script Properties):
+ *  - QUANTIVE_API_TOKEN
+ *  - QUANTIVE_ACCOUNT_ID
+ *  - SESSIONS (CSV or JSON array)
+  *  - At least one export target: GOOGLE_DOC_ID or TEXT_FILE_URL/TEXT_FILE_ID
+ * Optional:
+ *  - QUANTIVE_BASE_URL (default https://app.us.quantive.com/results/api/v1)
+ *  - LOOKBACK_DAYS (default 7)
+ *  - TEXT_FILE_URL or TEXT_FILE_ID (for plain-text export)
  */
 function getConfig() {
-  // Check if CONFIG is available from config.gs
-  if (typeof CONFIG === 'undefined') {
-    throw new Error('CONFIG not found. Please create config.gs from config.example.gs and fill in your credentials.');
+  const props = PropertiesService.getScriptProperties();
+  const get = (key) => (props.getProperty(key) || '').trim();
+
+  const errors = [];
+
+  const apiToken = get('QUANTIVE_API_TOKEN');
+  if (!apiToken) errors.push('- QUANTIVE_API_TOKEN is missing');
+
+  const accountId = get('QUANTIVE_ACCOUNT_ID');
+  if (!accountId) errors.push('- QUANTIVE_ACCOUNT_ID is missing');
+
+  const sessionsRaw = get('SESSIONS');
+  let sessions = [];
+  if (!sessionsRaw) {
+    errors.push('- SESSIONS is missing (provide comma-separated names/UUIDs or a JSON array)');
+  } else {
+    try {
+      if (sessionsRaw.trim().startsWith('[')) {
+        const parsed = JSON.parse(sessionsRaw);
+        if (Array.isArray(parsed)) sessions = parsed.map(String).map(s => s.trim()).filter(Boolean);
+      } else {
+        sessions = sessionsRaw.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    } catch (e) {
+      errors.push('- SESSIONS could not be parsed; use CSV or JSON array');
+    }
   }
-  
-  // Validate required properties
-  if (!CONFIG.QUANTIVE_API_TOKEN || CONFIG.QUANTIVE_API_TOKEN === 'your-actual-api-token-here') {
-    throw new Error('QUANTIVE_API_TOKEN not set in config.gs');
+
+  const googleDocId = get('GOOGLE_DOC_ID');
+
+  // Optional values
+  const baseUrlStr = get('QUANTIVE_BASE_URL');
+  const baseUrl = baseUrlStr || 'https://app.us.quantive.com/results/api/v1';
+  if (baseUrlStr && !/^https?:\/\//i.test(baseUrlStr)) {
+    errors.push('- QUANTIVE_BASE_URL must start with http(s)://');
   }
-  if (!CONFIG.QUANTIVE_ACCOUNT_ID || CONFIG.QUANTIVE_ACCOUNT_ID === 'your-actual-account-id-here') {
-    throw new Error('QUANTIVE_ACCOUNT_ID not set in config.gs');
+
+  const lookbackDaysStr = get('LOOKBACK_DAYS');
+  let lookbackDays = 7;
+  if (lookbackDaysStr) {
+    if (!/^\d+$/.test(lookbackDaysStr)) {
+      errors.push('- LOOKBACK_DAYS must be an integer');
+    } else {
+      lookbackDays = parseInt(lookbackDaysStr, 10);
+      if (lookbackDays <= 0 || lookbackDays > 365) {
+        errors.push('- LOOKBACK_DAYS must be between 1 and 365');
+      }
+    }
   }
-  if (!CONFIG.SESSIONS || CONFIG.SESSIONS.length === 0) {
-    throw new Error('SESSIONS not set in config.gs - must be an array of session names or UUIDs');
+
+  // Optional plain-text export support
+  let textFileId = null;
+  const textFileUrl = get('TEXT_FILE_URL');
+  const textFileIdProp = get('TEXT_FILE_ID');
+  if (textFileUrl) {
+    textFileId = deriveDriveFileIdFromUrl(textFileUrl);
+    if (!textFileId) {
+      errors.push('- TEXT_FILE_URL could not be parsed into a Drive file ID. Use a standard sharing URL or set TEXT_FILE_ID directly');
+    }
   }
-  if (!CONFIG.GOOGLE_DOC_ID) {
-    throw new Error('GOOGLE_DOC_ID not set in config.gs');
+  if (!textFileId && textFileIdProp) textFileId = textFileIdProp;
+  if (textFileIdProp && !/^[A-Za-z0-9_-]{10,}$/.test(textFileIdProp)) {
+    errors.push('- TEXT_FILE_ID does not look like a valid Drive file ID');
   }
-  
-  // Normalize sessions to array format
-  let sessions = CONFIG.SESSIONS;
-  if (typeof sessions === 'string') {
-    sessions = [sessions]; // Convert single session to array
+
+  if (googleDocId && !/^[A-Za-z0-9_-]{10,}$/.test(googleDocId)) {
+    errors.push('- GOOGLE_DOC_ID does not look like a valid Google Doc ID');
   }
-  
+
+  // Ensure at least one export target is configured
+  if (!googleDocId && !textFileId) {
+    errors.push('- Provide at least one export target: GOOGLE_DOC_ID or TEXT_FILE_URL/TEXT_FILE_ID');
+  }
+
+  if (errors.length > 0) {
+    const help = [
+      'Missing required configuration. Set Script Properties in Apps Script:',
+      '  - Open Extensions → Apps Script',
+      '  - In the editor, go to Project Settings → Script properties → Add property',
+      '  - Required: QUANTIVE_API_TOKEN, QUANTIVE_ACCOUNT_ID, SESSIONS',
+      '  - Also required: at least one export target (GOOGLE_DOC_ID or TEXT_FILE_URL/TEXT_FILE_ID)',
+      '  - Optional: QUANTIVE_BASE_URL, LOOKBACK_DAYS',
+      'Example values:',
+      '  SESSIONS: Q3 2025, RHELBU Annual 2025  (CSV)  OR  ["Q3 2025","RHELBU Annual 2025"] (JSON)'
+    ].join('\n');
+    throw new Error(`${errors.join('\n')}
+${help}`);
+  }
+
   return {
-    apiToken: CONFIG.QUANTIVE_API_TOKEN,
-    accountId: CONFIG.QUANTIVE_ACCOUNT_ID,
-    sessions: sessions, // Array of session names/UUIDs
-    googleDocId: CONFIG.GOOGLE_DOC_ID,
-    baseUrl: CONFIG.QUANTIVE_BASE_URL || 'https://app.us.quantive.com/results/api/v1',
-    lookbackDays: CONFIG.LOOKBACK_DAYS || 7
+    apiToken,
+    accountId,
+    sessions,
+    googleDocId: googleDocId || null,
+    baseUrl,
+    lookbackDays,
+    textFileId: textFileId || null
   };
+}
+
+/**
+ * Derive Drive file ID from a sharing URL or return as-is if it's already an ID
+ */
+function deriveDriveFileIdFromUrl(urlOrId) {
+  if (!urlOrId) return null;
+  // If it looks like a bare ID (no slashes), return it
+  if (!/\//.test(urlOrId) && /^[A-Za-z0-9_-]{10,}$/.test(urlOrId)) {
+    return urlOrId;
+  }
+  // Common Drive URL formats
+  // 1) https://drive.google.com/file/d/<ID>/view?usp=sharing
+  let m = urlOrId.match(/\/file\/d\/([A-Za-z0-9_-]+)\//);
+  if (m && m[1]) return m[1];
+  // 2) https://drive.google.com/open?id=<ID>
+  m = urlOrId.match(/[?&]id=([A-Za-z0-9_-]+)/);
+  if (m && m[1]) return m[1];
+  // 3) Any URL where the last path segment is the ID (fallback)
+  try {
+    const url = UrlFetchApp ? urlOrId : urlOrId; // keep linter happy
+  } catch (e) {}
+  const parts = urlOrId.split(/[/?#&=]/).filter(Boolean);
+  const candidate = parts.find(p => /^[A-Za-z0-9_-]{10,}$/.test(p));
+  return candidate || null;
 }
 
 /**
@@ -1584,39 +1689,31 @@ function writeReport(docId, data, stats, config) {
   Logger.log(`📄 Attempting to open Google Doc with ID: ${docId}`);
   
   let doc, body;
-  
-  try {
-    doc = DocumentApp.openById(docId);
-    Logger.log(`✅ Successfully opened document: ${doc.getName()}`);
-    body = doc.getBody();
-  } catch (docError) {
-    Logger.log(`❌ Failed to open document with ID: ${docId}`);
-    Logger.log(`Error details: ${docError.message}`);
-    
-    // Try to provide helpful suggestions
-    if (docError.message.includes('failed while accessing document')) {
-      Logger.log(`💡 Troubleshooting suggestions:`);
-      Logger.log(`   1. Verify the document ID in your config.gs file`);
-      Logger.log(`   2. Check that the document exists and is accessible`);
-      Logger.log(`   3. Ensure the Apps Script has permission to access the document`);
-      Logger.log(`   4. Try creating a new Google Doc and updating the GOOGLE_DOC_ID`);
-      
-      // Attempt to create a new document
-      Logger.log(`🔧 Attempting to create a new document...`);
-      try {
-        doc = DocumentApp.create('Quantive Report - ' + new Date().toDateString());
-        const newDocId = doc.getId();
-        Logger.log(`✅ Created new document with ID: ${newDocId}`);
-        Logger.log(`📝 Please update your config.gs with GOOGLE_DOC_ID: '${newDocId}'`);
-        Logger.log(`🔗 Document URL: ${doc.getUrl()}`);
-        
-        body = doc.getBody();
-      } catch (createError) {
-        Logger.log(`❌ Failed to create new document: ${createError.message}`);
-        throw new Error(`Cannot access document ${docId} and failed to create new document. ${docError.message}`);
+  let attempt = 0;
+  const maxAttempts = 3;
+  const retryDelay = 2000; // 2 seconds, to be safer
+
+  while (attempt < maxAttempts) {
+    try {
+      doc = DocumentApp.openById(docId);
+      Logger.log(`✅ Successfully opened document: ${doc.getName()} on attempt ${attempt + 1}`);
+      body = doc.getBody();
+      break; // Success, exit loop
+    } catch (docError) {
+      attempt++;
+      Logger.log(`❌ Failed to open document with ID: ${docId} on attempt ${attempt}`);
+      Logger.log(`   Error details: ${docError.message}`);
+      if (attempt < maxAttempts) {
+        Logger.log(`   Retrying in ${retryDelay / 1000} second(s)...`);
+        Utilities.sleep(retryDelay);
+      } else {
+        Logger.log(`💡 Max retries reached. Troubleshooting suggestions:`);
+        Logger.log(`   1. Verify the document ID in your config.gs file`);
+        Logger.log(`   2. Check that the document exists and is accessible`);
+        Logger.log(`   3. Ensure the Apps Script has permission to access the document`);
+        Logger.log(`   4. Create a new Google Doc and update the GOOGLE_DOC_ID in your config`);
+        throw new Error(`Cannot access document ${docId} after ${maxAttempts} attempts. ${docError.message}`);
       }
-    } else {
-      throw docError;
     }
   }
   
@@ -1628,30 +1725,38 @@ function writeReport(docId, data, stats, config) {
   
   // Title for multi-session reports
   const title = data.sessionCount > 1 
-    ? `Quantive Multi-Session Report - ${data.sessionNames}`
-    : `Quantive Report - ${data.sessions[0].name}`;
+    ? `Quantive Report: ${data.sessionNames}`
+    : `Quantive Report: ${data.sessions[0].name}`;
   const titleParagraph = body.appendParagraph(title);
   titleParagraph.setHeading(DocumentApp.ParagraphHeading.TITLE);
   
-  // Timestamp and session info
-  body.appendParagraph(`Generated: ${new Date().toLocaleString()}`);
+  body.appendParagraph(''); // Empty line
   
-  if (data.sessionCount > 1) {
-    body.appendParagraph(`Sessions included: ${data.sessionCount}`);
-    data.sessions.forEach((session, index) => {
-      const sessionInfo = `   ${index + 1}. ${session.name || session.title} (ID: ${session.id})`;
-      const sessionParagraph = body.appendParagraph(sessionInfo);
-      sessionParagraph.setFontSize(10);
-      sessionParagraph.setForegroundColor('#666666');
-    });
-  }
+  // Generated timestamp
+  const generatedParagraph = body.appendParagraph(`Generated: ${new Date().toLocaleString()}`);
+  generatedParagraph.editAsText().setBold(0, 9, true); // Make "Generated:" bold
+  
+  // Sessions included
+  const sessionText = data.sessionCount > 1 
+    ? `Sessions Included: ${data.sessionNames}`
+    : `Sessions Included: ${data.sessions[0].name}`;
+  const sessionParagraph = body.appendParagraph(sessionText);
+  sessionParagraph.editAsText().setBold(0, 17, true); // Make "Sessions Included:" bold
+  
+  body.appendParagraph(''); // Empty line
+  
+  // Horizontal rule (use underline for visual separation)
+  const hrParagraph = body.appendParagraph('_______________________________________________________________________________');
+  hrParagraph.setForegroundColor('#cccccc');
   
   body.appendParagraph(''); // Empty line
   
   // Summary section
-  body.appendParagraph('Executive Summary').setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  body.appendParagraph('Executive Summary').setHeading(DocumentApp.ParagraphHeading.HEADING2);
   
-  // Create a formatted summary table
+  body.appendParagraph(''); // Empty line
+  
+  // Create bullet points with bold labels
   const summaryData = [
     ['Overall Progress', `${stats.overallProgress}%`],
     ['Total Objectives', `${stats.totalObjectives}`],
@@ -1667,138 +1772,172 @@ function writeReport(docId, data, stats, config) {
   }
   
   summaryData.forEach(([label, value]) => {
-    const summaryParagraph = body.appendParagraph(`${label}: ${value}`);
-    summaryParagraph.setBold(true);
+    const summaryItem = body.appendListItem(`${label}: ${value}`);
+    summaryItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+    // Make the label bold - using label.length + 1 to include the colon
+    summaryItem.editAsText().setBold(0, label.length, true);
   });
   
   // Add detailed hierarchy breakdown if available
   if (stats.hierarchyStats) {
     body.appendParagraph(''); // Empty line
-    body.appendParagraph('Hierarchy Breakdown:').setBold(true).setForegroundColor('#333333');
+    body.appendParagraph('Hierarchy Breakdown').setHeading(DocumentApp.ParagraphHeading.HEADING3);
+    
+    body.appendParagraph(''); // Empty line
     
     Object.entries(stats.hierarchyStats.levels).forEach(([level, count]) => {
       const levelName = level === '0' ? 'Strategic' : level === '1' ? 'Tactical' : level === '2' ? 'Operational' : `Level ${level}`;
-      const hierarchyParagraph = body.appendParagraph(`   ${levelName} (Level ${level}): ${count} objectives`);
-      hierarchyParagraph.setForegroundColor('#666666');
-      hierarchyParagraph.setFontSize(11);
+      const hierarchyItem = body.appendListItem(`${levelName} (Level ${level}): ${count} objectives`);
+      hierarchyItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+      // Make the level name bold - be careful with index bounds
+      if (levelName && levelName.length > 0) {
+        hierarchyItem.editAsText().setBold(0, levelName.length - 1, true);
+      }
     });
     
     // Add orphan information if there are any
     if (stats.hierarchyStats.orphanObjectives && stats.hierarchyStats.orphanObjectives.length > 0) {
       body.appendParagraph(''); // Empty line
-      body.appendParagraph('Cross-Session References:').setBold(true).setForegroundColor('#ff8500');
-      const orphanText = `   ${stats.hierarchyStats.orphanObjectives.length} objectives reference parents outside this session`;
-      const orphanParagraph = body.appendParagraph(orphanText);
-      orphanParagraph.setForegroundColor('#ff8500');
-      orphanParagraph.setFontSize(10);
-      orphanParagraph.setItalic(true);
+      body.appendParagraph('Cross-Session References').setHeading(DocumentApp.ParagraphHeading.HEADING3);
+      body.appendParagraph(''); // Empty line
       
-      const noteText = `   (These are shown as root-level objectives but may be children in the broader organizational hierarchy)`;
-      const noteParagraph = body.appendParagraph(noteText);
-      noteParagraph.setForegroundColor('#999999');
-      noteParagraph.setFontSize(9);
-      noteParagraph.setItalic(true);
+      const orphanItem = body.appendListItem(`${stats.hierarchyStats.orphanObjectives.length} objectives reference parents outside this session`);
+      orphanItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+      orphanItem.setForegroundColor('#ff8500');
+      orphanItem.setItalic(true);
+      
+      const noteItem = body.appendListItem('(These are shown as root-level objectives but may be children in the broader organizational hierarchy)');
+      noteItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+      noteItem.setForegroundColor('#999999');
+      noteItem.setFontSize(9);
+      noteItem.setItalic(true);
     }
   }
   
   body.appendParagraph(''); // Empty line
   
   // Status breakdown
-  body.appendParagraph('Status Breakdown').setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  body.appendParagraph('Status Breakdown').setHeading(DocumentApp.ParagraphHeading.HEADING3);
+  
+  body.appendParagraph(''); // Empty line
   
   if (Object.keys(stats.statusCounts).length > 0) {
     Object.entries(stats.statusCounts).forEach(([status, count]) => {
       const percentage = Math.round((count / stats.totalKeyResults) * 100);
-      const statusParagraph = body.appendParagraph(`${status}: ${count} (${percentage}%)`);
-      statusParagraph.setBold(true);
+      const statusItem = body.appendListItem(`${status}: ${count} (${percentage}%)`);
+      statusItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+      // Make the status name bold - be careful with index bounds
+      if (status && status.length > 0) {
+        statusItem.editAsText().setBold(0, status.length - 1, true);
+      }
       
       // Add color coding based on status
       if (status.toLowerCase().includes('track') || status.toLowerCase().includes('completed')) {
-        statusParagraph.setForegroundColor('#0d7377'); // Green
+        statusItem.setForegroundColor('#0d7377'); // Green
       } else if (status.toLowerCase().includes('risk')) {
-        statusParagraph.setForegroundColor('#ff8500'); // Orange
+        statusItem.setForegroundColor('#ff8500'); // Orange
       } else if (status.toLowerCase().includes('behind')) {
-        statusParagraph.setForegroundColor('#d62828'); // Red
+        statusItem.setForegroundColor('#d62828'); // Red
       }
     });
   } else {
-    body.appendParagraph('No status information available').setItalic(true).setForegroundColor('#999999');
+    const noStatusItem = body.appendListItem('No status information available');
+    noStatusItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+    noStatusItem.setItalic(true);
+    noStatusItem.setForegroundColor('#999999');
   }
   
   body.appendParagraph(''); // Empty line
   
+  // Horizontal rule (use underline for visual separation)
+  const hrParagraph2 = body.appendParagraph('_______________________________________________________________________________');
+  hrParagraph2.setForegroundColor('#cccccc');
+  
+  body.appendParagraph(''); // Empty line
+  
   // Objectives list - using hierarchical structure
-  body.appendParagraph('Objectives & Key Results').setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  body.appendParagraph('Objectives & Key Results').setHeading(DocumentApp.ParagraphHeading.HEADING2);
   
   // Use hierarchical objectives if available, otherwise fall back to flat list
   const objectivesToProcess = data.hierarchicalObjectives || data.objectives.map(obj => ({ ...obj, level: 0, hierarchicalIndex: data.objectives.indexOf(obj) + 1 }));
   
-  Logger.log(`📊 Processing ${objectivesToProcess.length} objectives (hierarchical: ${!!data.hierarchicalObjectives}) with ${data.keyResults.length} total key results`);
   
-  // Debug key results associations before processing
-  if (data.keyResults.length > 0) {
-    Logger.log(`🔍 Key Results Association Debug:`);
-    const goalIdCount = data.keyResults.filter(kr => kr.goalId).length;
-    Logger.log(`   KRs with goalId: ${goalIdCount}/${data.keyResults.length}`);
-    
-  }
+  body.appendParagraph(''); // Empty line
   
   objectivesToProcess.forEach((objective, index) => {
     // Simple and correct: filter by goalId (the actual API field)
     const objKeyResults = data.keyResults.filter(kr => kr.goalId === objective.id);
     
-    Logger.log(`📋 ${' '.repeat(objective.level * 2)}${objective.hierarchicalIndex}. ${objective.name} (Level ${objective.level}) has ${objKeyResults.length} key results`);
-    if (objKeyResults.length > 0) {
-      objKeyResults.forEach((kr, krIndex) => {
-        Logger.log(`${' '.repeat(objective.level * 2)}   ${krIndex + 1}. ${kr.name} (ID: ${kr.id})`);
-      });
-    }
-    
     const objProgress = objKeyResults.length > 0 
       ? Math.round(objKeyResults.reduce((sum, kr) => sum + (kr.progress || 0), 0) / objKeyResults.length)
       : objective.progress || 0;
     
-    const sessionInfo = data.sessionCount > 1 ? ` | Session: ${objective.sessionName}` : '';
+    // Create objective as H3 heading
+    const objHeading = body.appendParagraph(objective.name);
+    objHeading.setHeading(DocumentApp.ParagraphHeading.HEADING3);
     
-    // Add sparkline to objective if available
-    const objSparklineText = objective.sparkline && objective.sparkline !== '—' ? ` ${objective.sparkline}` : '';
+    // Add metadata as bullet points
+    const ownerItem = body.appendListItem(`Owner: ${objective.ownerName || 'Unassigned'}`);
+    ownerItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+    ownerItem.editAsText().setBold(0, 5, true); // Make "Owner:" bold
     
-    // Create objective as list item
-    const objListItem = body.appendListItem(`${objective.name} (Progress: ${objProgress}%${objSparklineText} | Owner: ${objective.ownerName || 'Unassigned'}${sessionInfo})`);
-    objListItem.setGlyphType(DocumentApp.GlyphType.BULLET);
-    
-    // Apply nesting level for hierarchy
-    const nestingLevel = objective.level || 0;
-    if (nestingLevel > 0) {
-      objListItem.setNestingLevel(nestingLevel);
+    if (data.sessionCount > 1) {
+      const sessionItem = body.appendListItem(`Session: ${objective.sessionName}`);
+      sessionItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+      sessionItem.editAsText().setBold(0, 6, true); // Make "Session:" bold
     }
     
-    // Make objective name bold
-    const nameEndIndex = objective.name.length;
-    objListItem.editAsText().setBold(0, nameEndIndex - 1, true);
+    const progressItem = body.appendListItem(`Progress: ${objProgress}%`);
+    progressItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+    progressItem.editAsText().setBold(0, 7, true); // Make "Progress:" bold
     
     // Add description if available
     if (objective.description && objective.description.trim()) {
       const descriptionItem = body.appendListItem(`Description: ${objective.description}`);
-      descriptionItem.setGlyphType(DocumentApp.GlyphType.HOLLOW_BULLET);
-      descriptionItem.setNestingLevel(nestingLevel + 1);
-      descriptionItem.editAsText().setItalic(true);
+      descriptionItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+      descriptionItem.editAsText().setBold(0, 10, true); // Make "Description:" bold
     }
     
-    // Key Results as nested list items
+    // Key Results section
     if (objKeyResults.length > 0) {
+      const keyResultsItem = body.appendListItem('Key Results:');
+      keyResultsItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+      keyResultsItem.editAsText().setBold(0, 10, true); // Make "Key Results:" bold
+      
       objKeyResults.forEach((kr, krIndex) => {
         const krProgress = kr.progress || kr.attainment * 100 || 0;
         const krOwner = kr.ownerName || kr.objectiveOwner || 'Unassigned';
-        const krDescription = kr.description ? ` - ${kr.description}` : '';
-        const sparklineText = kr.sparkline && kr.sparkline !== '—' ? ` ${kr.sparkline}` : '';
-        const krText = `${kr.name} (Progress: ${Math.round(krProgress)}%${sparklineText} | Owner: ${krOwner})${krDescription}`;
         
-        const krListItem = body.appendListItem(krText);
-        krListItem.setGlyphType(DocumentApp.GlyphType.HOLLOW_BULLET);
-        krListItem.setNestingLevel(nestingLevel + 1);
+        // Key Result as nested bullet
+        const krItem = body.appendListItem(`${kr.name}`);
+        krItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+        krItem.setNestingLevel(1);
+        // Make KR name bold - check bounds to avoid errors
+        if (kr.name && kr.name.length > 0) {
+          krItem.editAsText().setBold(0, kr.name.length - 1, true);
+        }
         
-        // Tasks as sub-list items under each key result
+        // KR Owner
+        const krOwnerItem = body.appendListItem(`Owner: ${krOwner}`);
+        krOwnerItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+        krOwnerItem.setNestingLevel(2);
+        krOwnerItem.editAsText().setBold(0, 5, true); // Make "Owner:" bold
+        
+        // KR Progress
+        const krProgressItem = body.appendListItem(`Progress: ${Math.round(krProgress)}%`);
+        krProgressItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+        krProgressItem.setNestingLevel(2);
+        krProgressItem.editAsText().setBold(0, 7, true); // Make "Progress:" bold
+        
+        // KR Description/Note if available
+        if (kr.description && kr.description.trim()) {
+          const krNoteItem = body.appendListItem(`Note: ${kr.description}`);
+          krNoteItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+          krNoteItem.setNestingLevel(2);
+          krNoteItem.editAsText().setBold(0, 3, true); // Make "Note:" bold
+        }
+        
+        // Tasks as sub-bullets under each key result (if any)
         if (kr.tasks && kr.tasks.length > 0) {
           kr.tasks.forEach((task, taskIndex) => {
             const taskOwner = task.ownerName || 'Unassigned';
@@ -1806,50 +1945,23 @@ function writeReport(docId, data, stats, config) {
             const taskDescription = task.description ? ` - ${task.description}` : '';
             const taskText = `${task.name || task.title} (Owner: ${taskOwner} | Status: ${taskStatus})${taskDescription}`;
             
-            const taskListItem = body.appendListItem(taskText);
-            taskListItem.setGlyphType(DocumentApp.GlyphType.SQUARE_BULLET);
-            taskListItem.setNestingLevel(nestingLevel + 2);
+            const taskItem = body.appendListItem(taskText);
+            taskItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+            taskItem.setNestingLevel(3);
+            taskItem.setFontSize(9);
+            taskItem.setForegroundColor('#666666');
           });
-        } else {
-          const noTasksItem = body.appendListItem('No tasks found');
-          noTasksItem.setGlyphType(DocumentApp.GlyphType.SQUARE_BULLET);
-          noTasksItem.setNestingLevel(nestingLevel + 2);
-          noTasksItem.editAsText().setItalic(true);
         }
       });
     } else {
-      const noKrItem = body.appendListItem('No key results found');
-      noKrItem.setGlyphType(DocumentApp.GlyphType.HOLLOW_BULLET);
-      noKrItem.setNestingLevel(nestingLevel + 1);
-      noKrItem.editAsText().setItalic(true);
+      const noKrItem = body.appendListItem('Key Results: None');
+      noKrItem.setGlyphType(DocumentApp.GlyphType.BULLET);
+      noKrItem.editAsText().setBold(0, 10, true); // Make "Key Results:" bold
     }
-  });
-  
-  // Validation: Count total key results processed
-  let totalProcessed = 0;
-  objectivesToProcess.forEach(objective => {
-    const objKeyResults = data.keyResults.filter(kr => kr.goalId === objective.id);
-    totalProcessed += objKeyResults.length;
-  });
-  
-  // Hierarchy-aware validation and statistics
-  if (data.hierarchicalObjectives) {
-    const levelStats = {};
-    data.hierarchicalObjectives.forEach(obj => {
-      levelStats[obj.level] = (levelStats[obj.level] || 0) + 1;
-    });
     
-    Logger.log(`✅ Hierarchical Validation: Processed ${totalProcessed} key results across ${objectivesToProcess.length} objectives`);
-    Logger.log(`📊 Total key results in dataset: ${data.keyResults.length}`);
-  } else {
-    Logger.log(`✅ Flat Validation: Processed ${totalProcessed} key results across ${objectivesToProcess.length} objectives`);
-    Logger.log(`📊 Total key results in dataset: ${data.keyResults.length}`);
-  }
+    body.appendParagraph(''); // Empty line after each objective
+  });
   
-  if (totalProcessed !== data.keyResults.length) {
-    Logger.log(`⚠️ Warning: Processed count (${totalProcessed}) doesn't match total count (${data.keyResults.length})`);
-    Logger.log(`This could indicate duplicate key results or missing associations`);
-  }
   
   const docUrl = doc.getUrl();
   const documentId = doc.getId();
@@ -1862,14 +1974,13 @@ function writeReport(docId, data, stats, config) {
  * Setup function - run this once to configure the script
  */
 function setup() {
-  Logger.log('🔧 Setup Instructions:');
+  Logger.log('🔧 Setup Instructions (no config files):');
   Logger.log('');
-  Logger.log('1. Copy config.example.gs to config.gs');
-  Logger.log('2. Fill in your actual credentials in config.gs:');
+  Logger.log('1. Open Project Settings → Script properties and add:');
   Logger.log('   - QUANTIVE_API_TOKEN: Your API token from Quantive');
   Logger.log('   - QUANTIVE_ACCOUNT_ID: Your account ID');
-  Logger.log('   - SESSION_NAME: The name of the session (e.g., "Q4 2024 OKRs")');
-  Logger.log('   - GOOGLE_DOC_ID: The Google Doc to write reports to');
+  Logger.log('   - SESSIONS: CSV or JSON array of session names/UUIDs');
+  Logger.log('   - Export target: GOOGLE_DOC_ID or TEXT_FILE_URL/TEXT_FILE_ID');
   Logger.log('');
   Logger.log('3. Run listAvailableSessions() to see available session names');
   Logger.log('4. Run generateQuantiveReport() to test');
