@@ -1,0 +1,6 @@
+---
+name: documentation-guardian
+description: Use this agent when code changes have been made that may affect project documentation, including API changes, configuration updates, feature additions, or UI modifications. Examples: <example>Context: User has just implemented a new API endpoint for user authentication. user: 'I just added a new POST /api/auth/login endpoint that accepts email and password and returns a JWT token' assistant: 'I'll use the documentation-guardian agent to update all relevant documentation for this new API endpoint' <commentary>Since new API functionality was added, use the documentation-guardian agent to ensure technical docs, README, and user guides are updated accordingly.</commentary></example> <example>Context: User modified the configuration system to use environment variables instead of config files. user: 'I changed the app to use environment variables for database connection instead of config.json' assistant: 'Let me use the documentation-guardian agent to update the setup instructions and configuration documentation' <commentary>Configuration changes affect user setup instructions, so use documentation-guardian to update README and technical docs.</commentary></example>
+model: sonnet
+color: yellow
+---

@@ -1,0 +1,23 @@
+{
+  "name": "quantive-export-debug",
+  "version": "1.0.0",
+  "description": "Local debugging wrapper for Quantive Export Google Apps Script",
+  "main": "local-debug.js",
+  "scripts": {
+    "debug": "node local-debug.js",
+    "test-api": "node local-debug.js --test-api",
+    "list-sessions": "node local-debug.js --list-sessions",
+    "performance-test": "node local-debug.js --performance-test"
+  },
+  "dependencies": {
+    "node-fetch": "^2.6.7",
+    "dotenv": "^16.0.3"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "keywords": ["quantive", "okr", "google-apps-script", "debugging"],
+  "author": "",
+  "license": "MIT"
+}

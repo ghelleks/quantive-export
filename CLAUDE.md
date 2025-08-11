@@ -32,6 +32,24 @@ The application supports flexible session identification:
 
 ## Development Commands
 
+### Local Debugging (New in v2.1)
+```bash
+# Install dependencies for local debugging
+npm install
+
+# Test API connection locally
+npm run test-api
+
+# List available Quantive sessions
+npm run list-sessions
+
+# Generate full report (console output)
+npm run debug
+
+# Compare performance approaches
+npm run performance-test
+```
+
 ### Testing Framework
 ```bash
 # Run all tests
@@ -58,6 +76,12 @@ npm test -- --watch
 # Install dependencies
 npm install
 
+# Local development iteration cycle:
+npm run test-api           # Verify API connectivity
+npm run debug             # Test report generation
+# Make changes to Code.gs
+npm run debug             # Test again
+
 # Run linting
 npm run lint
 
@@ -70,6 +94,38 @@ npm audit
 # Run all checks before deployment
 npm run test:coverage && npm run lint
 ```
+
+## Local Debugging Architecture (v2.1)
+
+### Overview
+The local debugging system allows development and testing of Code.gs without Google Apps Script environment:
+
+- **Zero Code Changes**: Original Code.gs works unchanged in both environments
+- **Service Mocking**: Comprehensive mocks for all Google Apps Script services
+- **Environment Mapping**: .env file maps to Script Properties seamlessly
+- **Console Output**: Real-time debugging with formatted console output
+- **File Output**: Debug outputs saved to `debug-output/` directory
+
+### Mock Services
+- **PropertiesService**: Reads from `.env` instead of Script Properties
+- **UrlFetchApp**: Uses curl for synchronous HTTP requests (matches GAS behavior)
+- **Logger**: Console output with timestamps
+- **DocumentApp**: Console output instead of real Google Docs
+- **DriveApp**: File output to `debug-output/` directory
+- **Utilities.sleep()**: Real delays for rate limiting testing
+
+### Local Configuration Setup
+1. Copy `.env.example` to `.env`
+2. Configure credentials (same values as Script Properties)
+3. Run `npm run test-api` to verify connectivity
+4. Use `npm run debug` for full report generation
+
+### Benefits
+- **API Testing**: Verify Quantive API integration locally
+- **Data Inspection**: See raw API responses in console
+- **Performance Testing**: Compare optimization approaches
+- **Quick Iteration**: No deployment needed for testing
+- **Full Debugging**: Use Node.js debugging tools and breakpoints
 
 ## Testing Architecture
 
@@ -104,9 +160,10 @@ npm run test:coverage && npm run lint
 - **Git Security**: Comprehensive .gitignore for credential protection
 
 ### Configuration Files
-- `config.example.js`: Template with security best practices
+- `config.example.js`: Template with security best practices (legacy)
+- `.env.example`: Local debugging credential template
 - `.env.test.example`: Testing credential template
-- Configuration loaded via `ConfigManager.getConfig()`
+- Configuration loaded via `ConfigManager.getConfig()` or environment variables
 
 ## Real API Testing
 
@@ -174,12 +231,15 @@ Run `ConfigManager.validateConfig()` after setup to verify all credentials and s
 - **Service Mocking**: Comprehensive mocking of Google Apps Script services
 - **Async Handling**: Managing async operations in both environments
 
-### Recent Enhancements (v2.0)
-- Enhanced security and configuration management
-- Comprehensive testing infrastructure 
-- Session name to UUID resolution
-- Environment-specific settings
-- Performance optimizations for large datasets
+### Recent Enhancements (v2.0-2.1)
+- Enhanced security and configuration management (v2.0)
+- Comprehensive testing infrastructure (v2.0)
+- Session name to UUID resolution (v2.0)
+- Environment-specific settings (v2.0)
+- Performance optimizations for large datasets (v2.0)
+- Local debugging environment with service mocking (v2.1)
+- Node.js development workflow without Google Apps Script (v2.1)
+- Real-time console debugging and file output (v2.1)
 
 ## Development Philosophy
 
