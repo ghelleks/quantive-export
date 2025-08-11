@@ -97,14 +97,9 @@ If configured, the script will also overwrite a Drive text file with a Markdown-
 
 ## Testing
 
-Run these functions to validate setup:
+Run these functions in the Apps Script editor:
 - `testApiConnection()` - Test API connectivity
 - `listAvailableSessions()` - View available sessions
 - `generateQuantiveReport()` - Generate full report
 
-## File Structure
-
-- `Code.gs` - Main application code
-- No config files are used; configuration is set via Script Properties
-- `test/` - Test files and fixtures
-- `CLAUDE.md` - Development documentation
+For developers: See `docs/development-guide.md` for local debugging options.

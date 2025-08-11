@@ -42,13 +42,11 @@ This tool will help teams and leadership get a quick, regular pulse on OKR progr
 | **FR-05** | **Status Summary:** The script shall generate a summary of OKR statuses, providing a count for each status category (e.g., 'On Track', 'At Risk', 'Behind'). | Must-Have |
 | **FR-06** | **Recent Activity Identification:** The script must identify all Key Results that have been updated within a configurable lookback period (e.g., the last 7 days). | Must-Have |
 | **FR-07** | **Report Generation (Google Doc):** The script must be able to generate a new, formatted Google Doc containing the summary and recent activity. The document should have a clear title, headings for each section, and readable formatting. | Should-Have |
-| **FR-08** | **Report Generation (Google Sheet):** The script must be able to append a new row to a specified Google Sheet. Each column will represent a piece of data (e.g., Date, Overall Progress, \# On Track, \# At Risk, Recent Activity Summary). | Could-Have |
 | **FR-09** | **Automated Trigger:** The script must be configurable to run automatically on a schedule (e.g., every Monday at 9 AM) using Google App Script's time-driven triggers. | Must-Have |
 | **FR-10** | **Error Handling:** The script should gracefully handle potential errors, such as API connection failures or invalid configuration, and log these errors for troubleshooting. | Must-Have |
 | **FR-11** | **Configuration Management:** The script must read configuration from Script Properties and validate all required values at runtime, providing helpful error messages when missing. | Must-Have |
 | **FR-12** | **Plain Text Export:** The script should optionally write a Markdown-friendly snapshot to a Google Drive text file when a file URL or ID is provided. | Should-Have |
 | **FR-13** | **Credential Validation:** The script must validate API token formats, account IDs, and session IDs to prevent common configuration errors. | Should-Have |
-| **FR-14** | **Configuration Import/Export:** The script should provide utilities to securely import and export configuration settings while protecting sensitive credentials. | Could-Have |
 
 ### **4\. Non-Functional Requirements**
 
@@ -58,7 +56,6 @@ This tool will help teams and leadership get a quick, regular pulse on OKR progr
 | **NFR-02** | **Performance:** The script should execute within the Google Apps Script execution time limits (currently 6 minutes for consumer accounts). It should make efficient API calls to avoid rate limiting with configurable delays. | Must-Have |
 | **NFR-03** | **Configurability:** Key parameters such as the Quantive Session ID(s), API credentials, Google Doc ID, plain text file URL/ID, and the recent activity lookback period should be configurable through Script Properties. | Must-Have |
 | **NFR-04** | **Readability & Maintainability:** The code should be well-commented with comprehensive JSDoc documentation and organized into logical classes and functions to allow for easy understanding and future modifications. | Must-Have |
-| **NFR-05** | **Environment Management:** The script must support multiple deployment environments (development, staging, production) with environment-specific configuration settings and rate limiting. | Should-Have |
 | **NFR-06** | **Credential Security:** API tokens and sensitive credentials must be validated for format correctness and protected from accidental exposure in logs or error messages. | Must-Have |
 | **NFR-07** | **Configuration Usability:** Setup process must be streamlined with clear documentation, configuration templates, and validation to prevent common setup errors. | Should-Have |
 
@@ -84,10 +81,6 @@ The script now includes enhanced configuration management capabilities:
 - Environment-specific settings for rate limiting, logging, and retry behavior
 - Configurable through `ENVIRONMENT` property
 
-#### **6.3 Configuration Utilities**
-- `importConfiguration()` function for secure configuration import
-- `exportConfiguration()` function with option to exclude sensitive data
-- Enhanced `setupConfiguration()` with comprehensive guidance
 
 #### **6.4 Validation & Security**
 - API token format validation with length and character checks

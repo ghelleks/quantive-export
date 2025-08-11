@@ -1,4 +1,5 @@
 # Environment files with real credentials
+.env
 .env.test
 .env.local
 .env.*.local
@@ -17,6 +18,9 @@ node_modules/
 # Test output
 *.log
 npm-debug.log*
+
+# Debug outputs
+debug-output/
 
 # IDE files that might cache credentials
 .vscode/settings.json
