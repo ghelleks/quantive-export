@@ -21,6 +21,14 @@ const INTERNAL_CONFIG = {
   SPARKLINE_LENGTH: 10 // Number of points in sparkline
 };
 
+// Performance optimization flags
+const PERFORMANCE_MODE = {
+  SKIP_PROGRESS_HISTORY: true,   // Skip progress history API calls for major speedup
+  SKIP_SPARKLINES: true,         // Skip sparkline generation
+  SKIP_KR_PROGRESS_HISTORY: true, // Skip key result progress history
+  USE_BULK_USER_FETCH: true     // Use single bulk user API call instead of individual calls
+};
+
 // User name cache to avoid duplicate API calls
 const USER_NAME_CACHE = {};
 
@@ -151,10 +159,20 @@ function buildPlainTextSnapshot(data, stats, config) {
   });
   lines.push('');
   lines.push('## Objectives & Key Results');
+  
+  // PERFORMANCE OPTIMIZATION: Create Map for O(1) key result lookups
+  const keyResultsByGoal = new Map();
+  data.keyResults.forEach(kr => {
+    if (!keyResultsByGoal.has(kr.goalId)) {
+      keyResultsByGoal.set(kr.goalId, []);
+    }
+    keyResultsByGoal.get(kr.goalId).push(kr);
+  });
+  
   const objectivesToProcess = data.hierarchicalObjectives || data.objectives.map((obj, i) => ({ ...obj, level: 0, hierarchicalIndex: i + 1 }));
   objectivesToProcess.forEach((objective) => {
     const indent = '  '.repeat(objective.level || 0);
-    const objKeyResults = data.keyResults.filter(kr => kr.goalId === objective.id);
+    const objKeyResults = keyResultsByGoal.get(objective.id) || [];
     const objProgress = objKeyResults.length > 0
       ? Math.round(objKeyResults.reduce((sum, kr) => sum + (kr.progress || 0), 0) / objKeyResults.length)
       : objective.progress || 0;
@@ -394,11 +412,64 @@ function fetchUserDisplayName(userId, config, userMap = null) {
 }
 
 /**
+ * Fetch all users in a single bulk API call for maximum performance
+ */
+function fetchAllUsersBulk(config) {
+  if (!PERFORMANCE_MODE.USE_BULK_USER_FETCH) {
+    return null; // Fall back to individual user fetching
+  }
+  
+  try {
+    const usersUrl = `${config.baseUrl}/users?limit=1000&fields=id,displayName,name,email,firstName,lastName`;
+    Logger.log(`👥 Bulk fetching all users from: ${usersUrl}`);
+    
+    const response = UrlFetchApp.fetch(usersUrl, { 
+      headers: BatchProcessor.buildHeaders(config),
+      muteHttpExceptions: true 
+    });
+    
+    if (response.getResponseCode() === 200) {
+      const responseText = response.getContentText();
+      if (!responseText.trim().startsWith('<!DOCTYPE') && !responseText.trim().startsWith('<html')) {
+        const data = JSON.parse(responseText);
+        const users = data.items || data.users || data;
+        
+        const userMap = {};
+        users.forEach(user => {
+          const displayName = user.displayName || user.name || user.email ||
+                            (user.firstName && user.lastName ? `${user.firstName} ${user.lastName}` : null) ||
+                            `User ${user.id}`;
+          userMap[user.id] = displayName;
+          USER_NAME_CACHE[user.id] = displayName; // Cache for future use
+        });
+        
+        Logger.log(`✅ Bulk user fetch complete: ${Object.keys(userMap).length} users loaded`);
+        return userMap;
+      }
+    }
+    
+    Logger.log(`⚠️ Bulk user fetch failed, falling back to individual fetching`);
+    return null;
+  } catch (error) {
+    Logger.log(`⚠️ Bulk user fetch error: ${error.message}, falling back to individual fetching`);
+    return null;
+  }
+}
+
+/**
  * Batch fetch user display names for multiple user IDs
  * Replaces individual fetchUserDisplayName calls for better performance
  */
 function batchFetchUsers(userIds, config) {
   if (!userIds || userIds.length === 0) return {};
+  
+  // Try bulk fetch first for maximum performance
+  if (PERFORMANCE_MODE.USE_BULK_USER_FETCH) {
+    const bulkUserMap = fetchAllUsersBulk(config);
+    if (bulkUserMap) {
+      return bulkUserMap;
+    }
+  }
   
   const uniqueUserIds = [...new Set(userIds.filter(id => id))];
   Logger.log(`👥 Batch fetching ${uniqueUserIds.length} unique users`);
@@ -537,6 +608,13 @@ function processProgressHistory(historyData) {
  */
 function batchFetchProgressHistory(metricIds, config) {
   if (!metricIds || metricIds.length === 0) return {};
+  
+  // PERFORMANCE OPTIMIZATION: Skip progress history for speed
+  if (PERFORMANCE_MODE.SKIP_PROGRESS_HISTORY || PERFORMANCE_MODE.SKIP_KR_PROGRESS_HISTORY) {
+    const emptyMap = {};
+    metricIds.forEach(id => { emptyMap[id] = []; });
+    return emptyMap;
+  }
   
   const uniqueMetricIds = [...new Set(metricIds.filter(id => id))];
   
@@ -1387,8 +1465,18 @@ function fetchSessionDataSequential(config) {
   
   // Summary logging
   Logger.log(`📊 Summary: Processed ${allKeyResults.length} total key results for ${allObjectives.length} objectives`);
+  
+  // PERFORMANCE OPTIMIZATION: Create Map for O(1) lookups instead of O(n) filter operations
+  const keyResultsByGoalId = new Map();
+  allKeyResults.forEach(kr => {
+    if (!keyResultsByGoalId.has(kr.goalId)) {
+      keyResultsByGoalId.set(kr.goalId, []);
+    }
+    keyResultsByGoalId.get(kr.goalId).push(kr);
+  });
+  
   allObjectives.forEach((obj, idx) => {
-    const objKRs = allKeyResults.filter(kr => kr.goalId === obj.id);
+    const objKRs = keyResultsByGoalId.get(obj.id) || [];
     Logger.log(`   Objective ${idx + 1}: "${obj.name}" (ID: ${obj.id}) → ${objKRs.length} key results`);
     if (objKRs.length === 0) {
       // Debug why this objective has no key results
@@ -1402,7 +1490,12 @@ function fetchSessionDataSequential(config) {
   
   // Debug any unassociated key results (KRs without a matching objective)
   const objectiveIds = new Set(allObjectives.map(obj => obj.id));
-  const unassociatedKRs = allKeyResults.filter(kr => kr.goalId && !objectiveIds.has(kr.goalId));
+  const unassociatedKRs = [];
+  keyResultsByGoalId.forEach((krs, goalId) => {
+    if (goalId && !objectiveIds.has(goalId)) {
+      unassociatedKRs.push(...krs);
+    }
+  });
   if (unassociatedKRs.length > 0) {
     Logger.log(`⚠️ Found ${unassociatedKRs.length} key results with goalId not matching any objective:`);
     unassociatedKRs.forEach(kr => {
@@ -1626,6 +1719,11 @@ function calculateStats(data, config) {
  * Generate a simple text sparkline from progress history
  */
 function generateSparkline(progressHistory) {
+  // PERFORMANCE OPTIMIZATION: Skip sparkline generation for speed
+  if (PERFORMANCE_MODE.SKIP_SPARKLINES) {
+    return '—';
+  }
+  
   if (!progressHistory || progressHistory.length === 0) {
     return '—';
   }
@@ -1850,15 +1948,23 @@ function writeReport(docId, data, stats, config) {
   // Objectives list - using hierarchical structure
   body.appendParagraph('Objectives & Key Results').setHeading(DocumentApp.ParagraphHeading.HEADING2);
   
+  // PERFORMANCE OPTIMIZATION: Create Map for O(1) key result lookups instead of O(n) filter operations
+  const keyResultsByGoal = new Map();
+  data.keyResults.forEach(kr => {
+    if (!keyResultsByGoal.has(kr.goalId)) {
+      keyResultsByGoal.set(kr.goalId, []);
+    }
+    keyResultsByGoal.get(kr.goalId).push(kr);
+  });
+  
   // Use hierarchical objectives if available, otherwise fall back to flat list
   const objectivesToProcess = data.hierarchicalObjectives || data.objectives.map(obj => ({ ...obj, level: 0, hierarchicalIndex: data.objectives.indexOf(obj) + 1 }));
-  
   
   body.appendParagraph(''); // Empty line
   
   objectivesToProcess.forEach((objective, index) => {
-    // Simple and correct: filter by goalId (the actual API field)
-    const objKeyResults = data.keyResults.filter(kr => kr.goalId === objective.id);
+    // PERFORMANCE OPTIMIZATION: Use Map lookup O(1) instead of filter O(n)
+    const objKeyResults = keyResultsByGoal.get(objective.id) || [];
     
     const objProgress = objKeyResults.length > 0 
       ? Math.round(objKeyResults.reduce((sum, kr) => sum + (kr.progress || 0), 0) / objKeyResults.length)
