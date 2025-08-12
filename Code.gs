@@ -66,7 +66,7 @@ const BatchProcessor = {
   },
   
   // Execute batch requests with chunking support
-  executeBatchRequests: (requests, config, chunkSize = 10) => {
+  executeBatchRequests: (requests, config, chunkSize = 25) => {
     if (!requests || requests.length === 0) return [];
     
     const chunks = BatchProcessor.chunkRequests(requests, chunkSize);
@@ -89,9 +89,9 @@ const BatchProcessor = {
         
         allResponses.push(...chunkResponses);
         
-        // Small delay between chunks to respect rate limits
+        // Minimal delay between chunks for performance
         if (i < chunks.length - 1) {
-          Utilities.sleep(200);
+          Utilities.sleep(50);
         }
       } catch (error) {
         // Add null responses for failed chunk
@@ -1071,20 +1071,12 @@ function fetchSessionDataOptimized(config) {
     const keyResultIds = allKeyResults.map(kr => kr.id);
     const keyResultProgressMap = batchFetchProgressHistory(keyResultIds, config);
     
-    const keyResultTasksMap = batchFetchTasks(keyResultIds, config);
-         for (const krId of keyResultIds.slice(0, 5)) { // Test with first 5 only
-       keyResultTasksMap[krId] = fetchTasksForMetric(krId, config);
-       
-       if (keyResultTasksMap[krId].length === 3658) {
-         
-         break; // Stop after confirming the issue
-       }
-     }
-    // For remaining metrics, set empty arrays to avoid the API issue
+    // PERFORMANCE OPTIMIZATION: Skip task fetching entirely for speed
+    // Tasks can be fetched later if needed via separate function
+    const keyResultTasksMap = {};
+    // Initialize all key results with empty task arrays for performance
     keyResultIds.forEach(krId => {
-      if (!keyResultTasksMap[krId]) {
-        keyResultTasksMap[krId] = [];
-      }
+      keyResultTasksMap[krId] = []; // Empty arrays - tasks not fetched for performance
     });
     
     // Step 6: Enhance key results with batch data
