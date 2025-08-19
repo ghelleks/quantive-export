@@ -7,17 +7,26 @@
     "debug": "node local-debug.js",
     "test-api": "node local-debug.js --test-api",
     "list-sessions": "node local-debug.js --list-sessions",
-    "performance-test": "node local-debug.js --performance-test"
+    "performance-test": "node local-debug.js --performance-test",
+    "deploy": "cp Code.gs gas-src/Code.js && clasp push",
+    "deploy-version": "npm run deploy && clasp version && clasp deploy"
   },
   "dependencies": {
-    "node-fetch": "^2.6.7",
-    "dotenv": "^16.0.3"
+    "dotenv": "^16.0.3",
+    "node-fetch": "^2.6.7"
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "@google/clasp": "^3.0.6-alpha"
+  },
   "engines": {
     "node": ">=14.0.0"
   },
-  "keywords": ["quantive", "okr", "google-apps-script", "debugging"],
+  "keywords": [
+    "quantive",
+    "okr",
+    "google-apps-script",
+    "debugging"
+  ],
   "author": "",
   "license": "MIT"
 }

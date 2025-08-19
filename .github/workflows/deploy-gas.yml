@@ -1,0 +1,46 @@
+name: Deploy to Google Apps Script
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Code.gs'
+      - 'gas-src/**'
+      - '.clasp.json'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Copy Code.gs to gas-src
+      run: cp Code.gs gas-src/Code.js
+      
+    - name: Setup clasp authentication
+      run: |
+        echo "$CLASPRC_JSON" > ~/.clasprc.json
+        echo "$CLASP_JSON" > .clasp.json
+      env:
+        CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        CLASP_JSON: ${{ secrets.CLASP_JSON }}
+        
+    - name: Deploy to Google Apps Script
+      run: npx clasp push --force
+      
+    - name: Deploy version
+      run: |
+        VERSION=$(npx clasp version | grep -o '[0-9]*$')
+        echo "Deployed version: $VERSION"
+        npx clasp deploy --versionNumber $VERSION --description "Auto-deployed from main branch - $(date)"

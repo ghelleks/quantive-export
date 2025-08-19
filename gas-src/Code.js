@@ -13,8 +13,6 @@
  * 2. Add required properties: QUANTIVE_API_TOKEN, QUANTIVE_ACCOUNT_ID, SESSIONS
  * 3. Add at least one export target: GOOGLE_DOC_ID or TEXT_FILE_URL/TEXT_FILE_ID
  * 4. Run generateQuantiveReport() to test
- * 
- * Auto-deployed via GitHub Actions from main branch
  */
 
 // Internal configuration (sparkline settings)

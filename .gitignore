@@ -7,6 +7,10 @@
 # Configuration files with real credentials
 config.gs
 
+# Clasp authentication files (contain sensitive OAuth tokens)
+.clasprc.json
+~/.clasprc.json
+
 # Test output that might contain sensitive data
 test-results/
 coverage-with-data/
