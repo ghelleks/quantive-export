@@ -1,5 +1,7 @@
 # Project Requirements
 
+This document outlines the business and technical requirements for the Quantive Export system. For detailed architectural decisions that address these requirements, see the [Architecture Decision Records (ADRs)](adr/README.md).
+
 ## Core System Architecture
 
 ### System Components
@@ -26,27 +28,33 @@ The application must support flexible session identification:
 
 ## Performance Requirements
 
+Performance requirements are addressed through specific architectural decisions:
+- **Batch Processing Strategy**: See [ADR-001: Performance Architecture](adr/ADR-001-performance-architecture-batch-processing.md)
+- **Data Processing Optimization**: See [ADR-004: Data Processing Architecture](adr/ADR-004-data-processing-architecture.md)
+
 ### Optimizations Required
 - **Rate Limiting**: Intelligent delays between API calls
 - **Retry Logic**: Exponential backoff for transient failures
-- **Batch Processing**: Efficient handling of large datasets
-- **Memory Management**: Streaming for 400+ key results processing
+- **Batch Processing**: Efficient handling of large datasets (ADR-001)
+- **Memory Management**: Streaming for 400+ key results processing (ADR-004)
 
-### Execution Targets
-- **Small Sessions** (<50 KRs): Under 2 minutes
-- **Large Sessions** (400+ KRs): Under 5 minutes
-- **API Calls**: Throttled to respect Quantive rate limits
+### Execution Targets (Achieved in v2.2)
+- **Small Sessions** (<50 KRs): **60-70 seconds** (requirement: under 2 minutes)
+- **Large Sessions** (400+ KRs): **Under 3 minutes** (requirement: under 5 minutes)
+- **API Calls**: Intelligently batched with minimal delays for maximum throughput
 
 ## Security Requirements
+
+Security and configuration requirements are addressed in [ADR-006: Configuration Management](adr/ADR-006-configuration-management.md).
 
 ### Credential Management
 - **Credential Validation**: API token format checking, placeholder detection
 - **UUID Validation**: Session ID format verification
-- **Secure Storage**: Uses Google's encrypted PropertiesService
+- **Secure Storage**: Uses Google's encrypted PropertiesService (ADR-006)
 - **Git Security**: Comprehensive .gitignore for credential protection
 
 ### Environment Support
-- **Development**: Local testing with enhanced logging
+- **Development**: Local testing with enhanced logging (ADR-002, ADR-006)
 - **Staging**: Pre-production validation 
 - **Production**: Live deployment with optimized performance
 

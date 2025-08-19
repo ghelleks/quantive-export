@@ -4,6 +4,8 @@
 
 This project supports local debugging of the Quantive Export script without requiring the Google Apps Script environment. This enables rapid development, testing, and debugging using standard Node.js tools.
 
+For detailed architectural rationale behind the local debugging environment, see [ADR-002: Local Debugging Environment](adr/ADR-002-local-debugging-environment.md).
+
 ### Quick Setup
 
 1. **Install dependencies:**
@@ -248,125 +250,65 @@ The `debug-output/` directory contains:
 3. Use `npm run debug` to replicate production behavior
 4. Debug issues locally before deploying fixes
 
-## Development Commands
+## Development Commands Summary
 
-### Testing Framework
-```bash
-# Run all tests
-npm test
+The project provides four main commands for development and testing:
 
-# Run unit tests only
-npm run test:unit
+| Command | Purpose | When to Use |
+|---------|---------|-------------|
+| `npm run test-api` | Test API connectivity | Verify credentials and connection |
+| `npm run list-sessions` | List available sessions | Explore data and verify session access |
+| `npm run debug` | Full report generation | Complete functionality testing |
+| `npm run performance-test` | Batch vs sequential comparison | Performance optimization testing |
 
-# Run integration tests (requires real credentials)
-npm run test:integration
-
-# Run tests with coverage
-npm run test:coverage
-
-# Run specific test file
-npm test -- ConfigManager.test.js
-
-# Watch mode for development
-npm test -- --watch
-```
-
-### Development Workflow
-
-#### Local Development Approach (Recommended)
+### Basic Development Workflow
 ```bash
 # Setup
 npm install
 cp .env.example .env
-# Edit .env with credentials
+# Edit .env with your Quantive credentials
 
-# Rapid iteration cycle
-npm run test-api          # Verify connectivity
-npm run debug             # Test full functionality
+# Development cycle
+npm run test-api          # Verify API connectivity
+npm run debug             # Test functionality
 # Make changes to Code.gs
-npm run debug             # Test again
+npm run debug             # Test changes
 npm run performance-test  # Verify optimizations
-
-# Deploy to Google Apps Script when ready
-```
-
-#### Traditional Workflow  
-```bash
-# Install dependencies
-npm install
-
-# Run linting
-npm run lint
-
-# Fix linting issues
-npm run lint:fix
-
-# Check for security vulnerabilities
-npm audit
-
-# Run all checks before deployment
-npm run test:coverage && npm run lint
 ```
 
 ## Configuration Management
 
-### Configuration Files
-- `config.example.js`: Template with security best practices (legacy)
-- `.env.example`: Local debugging credential template
-- `.env.test.example`: Testing credential template
-- Configuration loaded via `ConfigManager.getConfig()` or environment variables
-
-### Local Development vs Google Apps Script Configuration
+The system uses unified configuration across environments:
 
 | Environment | Configuration Source | Setup Method |
 |-------------|---------------------|--------------|
 | Local Debug | `.env` file | `cp .env.example .env` |
 | Google Apps Script | Script Properties | Manual entry in GAS console |
-| Testing | `.env.test` file | `cp .env.test.example .env.test` |
 
-Both environments use identical configuration keys - just different storage mechanisms.
+Both environments use identical configuration keys - just different storage mechanisms. See [Setup Guide](setup-guide.md) for complete configuration details.
 
-### Real API Testing
+## Deployment Integration
 
-#### Credential Setup
-1. Copy `.env.test.example` to `.env.test`
-2. Add real Quantive API credentials
-3. Set `SKIP_API_TESTS=false` to enable integration tests
-4. Integration tests automatically skip when credentials unavailable
+For production deployment after local development:
 
-#### Test Session Configuration
-Set these in `.env.test` for comprehensive testing:
-- `TEST_SESSION_NAME`: Known session name for resolution testing
-- `TEST_SESSION_UUID`: Corresponding UUID for validation
-- `TEST_INVALID_SESSION_NAME`: Non-existent session for error testing
+1. **Manual Deployment**: Copy Code.gs to Google Apps Script editor
+2. **Automated Deployment**: Set up clasp or GitHub Actions integration
+3. **Configuration Transfer**: Copy .env values to Script Properties
 
-## Google Apps Script Deployment
+See [Deployment Guide](deployment-guide.md) for complete deployment instructions and automation setup.
 
-### Manual Deployment
-1. Copy Code.gs content to Google Apps Script editor
-2. Configure script properties via ConfigManager
-3. Set up triggers via TriggerManager
-4. Test with sample session data
+## Key Technical Notes
 
-### Configuration Validation
-Run `ConfigManager.validateConfig()` after setup to verify all credentials and settings.
+### Code.gs Architecture
+- **Single File Design**: All classes defined in one file for Google Apps Script compatibility
+- **ES6 Syntax**: Modern JavaScript with proper inheritance and comprehensive JSDoc
+- **Performance Optimization**: Map-based data structures and batch processing
+- **Enterprise Features**: Comprehensive error handling, logging, and monitoring
 
-## Key Development Notes
+### Development Advantages
+- **Zero Deployment Testing**: Test all functionality locally without Google Apps Script
+- **Real API Integration**: Work with live Quantive data during development
+- **Performance Benchmarking**: Compare optimization approaches with real metrics
+- **Comprehensive Debugging**: Full Node.js debugging capabilities with breakpoints
 
-### Code.gs Structure
-- All classes defined in single file for Google Apps Script compatibility
-- ES6 class syntax with proper inheritance
-- Comprehensive JSDoc documentation
-- Enterprise-level error handling and logging
-
-### Testing Challenges
-- **Class Loading**: Google Apps Script classes need special handling in Node.js
-- **Service Mocking**: Comprehensive mocking of Google Apps Script services
-- **Async Handling**: Managing async operations in both environments
-
-## Development Philosophy
-
-### Testing Approach
-- Write the test before you write the feature or user experience
-- There should never be a user experience that does not have a corresponding test
-- The feature is not complete until the test passes
+This local development environment significantly accelerates the development cycle while maintaining production fidelity.

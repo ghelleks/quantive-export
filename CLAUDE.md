@@ -6,14 +6,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Quantive Export is an enterprise-grade Google Apps Script application for automated OKR (Objectives and Key Results) reporting. It integrates with Quantive Results' API to generate comprehensive reports in Google Docs and Sheets formats.
 
+For detailed architectural rationale and technical decisions, see the **[Architecture Decision Records (ADRs)](docs/adr/README.md)**, which document the key design choices that shaped this enterprise-grade solution.
+
 ## Core Architecture
 
+The architecture follows key design decisions documented in ADRs. Key architectural choices include:
+
+- **[Single File Architecture](docs/adr/ADR-003-single-file-architecture.md)**: Monolithic Code.gs design for Google Apps Script optimization
+- **[Performance Architecture](docs/adr/ADR-001-performance-architecture-batch-processing.md)**: Batch processing strategy for 4-5x speed improvements
+- **[Data Processing Architecture](docs/adr/ADR-004-data-processing-architecture.md)**: Efficient data structures and algorithms
+- **[Configuration Management](docs/adr/ADR-006-configuration-management.md)**: Environment-agnostic configuration strategy
+
 ### System Components
-- **Data Acquisition Layer**: Batch API processing, bulk user fetching, intelligent caching
-- **Data Processing Layer**: Map-based lookups, hierarchical objective building, performance optimization
+- **Data Acquisition Layer**: Batch API processing, bulk user fetching, intelligent caching (ADR-001)
+- **Data Processing Layer**: Map-based lookups, hierarchical objective building, performance optimization (ADR-004)
 - **Reporting Layer**: Google Docs formatting, plain text snapshots, multi-session support
-- **Performance Layer**: BatchProcessor utility, configurable performance modes, parallel execution
-- **Automation Layer**: Trigger management, comprehensive logging, error handling
+- **Performance Layer**: BatchProcessor utility, configurable performance modes, parallel execution (ADR-001)
+- **Automation Layer**: Trigger management, comprehensive logging, error handling (ADR-005)
 
 ### Key Classes and Components (Code.gs)
 - **Configuration System**: Script Properties-based configuration with validation
@@ -36,6 +45,8 @@ The application supports flexible session identification:
 - **Validation**: Comprehensive session accessibility checking
 
 ## Development Commands
+
+For complete local debugging architecture details, see [ADR-002: Local Debugging Environment](docs/adr/ADR-002-local-debugging-environment.md).
 
 ### Local Debugging (Enhanced in v2.2)
 ```bash
@@ -89,6 +100,8 @@ npm run performance-test  # Benchmark current optimizations
 ```
 
 ## Major Performance Improvements (v2.2)
+
+For detailed performance architecture decisions, see [ADR-001: Performance Architecture](docs/adr/ADR-001-performance-architecture-batch-processing.md) and [ADR-004: Data Processing Architecture](docs/adr/ADR-004-data-processing-architecture.md).
 
 ### Performance Achievement Summary
 Recent optimizations have achieved **90-second execution targets** with **4-5x speed improvements**:
@@ -205,6 +218,8 @@ Typical performance improvements achieved:
 
 ## Configuration Management
 
+For complete configuration architecture details, see [ADR-006: Configuration Management](docs/adr/ADR-006-configuration-management.md).
+
 ### Environment Support (v2.0)
 - **Development**: Local testing with enhanced logging
 - **Staging**: Pre-production validation 
@@ -213,11 +228,11 @@ Typical performance improvements achieved:
 ### Security Features
 - **Credential Validation**: API token format checking, placeholder detection
 - **UUID Validation**: Session ID format verification
-- **Secure Storage**: Uses Google's encrypted PropertiesService
+- **Secure Storage**: Uses Google's encrypted PropertiesService (ADR-006)
 - **Git Security**: Comprehensive .gitignore for credential protection
 
 ### Configuration Management
-- **No Config Files**: All configuration via Script Properties or environment variables
+- **No Config Files**: All configuration via Script Properties or environment variables (ADR-006)
 - **Unified Configuration**: Same settings work for both local debugging and Google Apps Script
 - **Validation**: Built-in credential and session validation with detailed error messages
 - **Flexible Session Input**: Supports session names, UUIDs, CSV format, or JSON arrays
@@ -281,9 +296,11 @@ For Google Apps Script deployment, set identical values in Script Properties:
 
 ## Google Apps Script Deployment
 
+For automated deployment strategies, see [ADR-005: Deployment Automation](docs/adr/ADR-005-deployment-automation.md).
+
 ### Manual Deployment
 1. Copy Code.gs content to Google Apps Script editor
-2. Configure Script Properties with same values from local `.env`
+2. Configure Script Properties with same values from local `.env` (ADR-006)
 3. Set up triggers using `setupWeeklyTrigger()` function
 4. Test with sample session data using `generateQuantiveReport()`
 5. Monitor execution time to ensure <90s performance targets are met
@@ -301,11 +318,11 @@ For Google Apps Script deployment, set identical values in Script Properties:
 ## Key Development Notes
 
 ### Code.gs Structure
-- Single file architecture optimized for Google Apps Script execution
-- Performance-focused design with configurable optimization flags
-- Batch processing utilities with intelligent chunking and error handling
+- Single file architecture optimized for Google Apps Script execution (ADR-003)
+- Performance-focused design with configurable optimization flags (ADR-001)
+- Batch processing utilities with intelligent chunking and error handling (ADR-001)
 - Comprehensive logging for performance monitoring and debugging
-- Map-based data structures for efficient large dataset processing
+- Map-based data structures for efficient large dataset processing (ADR-004)
 
 ### Performance Considerations
 - **Batch Size Optimization**: 25-request chunks balance throughput with API limits
@@ -336,3 +353,28 @@ For Google Apps Script deployment, set identical values in Script Properties:
 - Write the test before you write the feature or user experience
 - There should never be a user experience that does not have a corresponding test
 - The feature is not complete until the test passes
+
+## Assistant Guidelines
+
+When helping users with this project:
+
+1. **Refer to Structured Documentation**: Direct users to appropriate guides in the docs/ directory
+2. **Focus on Current Version**: All guidance should reflect v2.2 architecture and performance features
+3. **Troubleshooting First**: For issues, check [Troubleshooting Guide](docs/troubleshooting.md) before diving deep
+4. **Performance Context**: Emphasize the performance improvements and optimization options available
+5. **Environment Awareness**: Distinguish between local development and Google Apps Script deployment contexts
+
+### Quick Help References
+- **Setup Issues**: → [Setup Guide](docs/setup-guide.md)
+- **Development Questions**: → [Development Guide](docs/development-guide.md) and [ADR-002](docs/adr/ADR-002-local-debugging-environment.md)
+- **Deployment Problems**: → [Deployment Guide](docs/deployment-guide.md) and [ADR-005](docs/adr/ADR-005-deployment-automation.md)
+- **Technical Details**: → [Architecture Guide](docs/architecture.md) and [ADR Index](docs/adr/README.md)
+- **Performance Questions**: → [ADR-001](docs/adr/ADR-001-performance-architecture-batch-processing.md) and [ADR-004](docs/adr/ADR-004-data-processing-architecture.md)
+- **Configuration Issues**: → [ADR-006](docs/adr/ADR-006-configuration-management.md)
+- **Troubleshooting**: → [Troubleshooting Guide](docs/troubleshooting.md)
+
+### Important Constraints
+- Do what has been asked; nothing more, nothing less
+- NEVER create files unless absolutely necessary for achieving the goal
+- ALWAYS prefer editing existing files to creating new ones
+- NEVER proactively create documentation files (*.md) or README files unless explicitly requested
