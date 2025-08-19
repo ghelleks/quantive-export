@@ -4,6 +4,11 @@ This guide covers all deployment methods for the Quantive Export tool, from manu
 
 For architectural decisions behind the deployment automation strategy, see [ADR-005: Deployment Automation](adr/ADR-005-deployment-automation.md).
 
+## Branch Strategy
+
+- **main**: Production branch - automatically deploys to production Google Apps Script
+- **dev**: Development branch - active development and testing before merging to main
+
 ## Deployment Options Overview
 
 | Method | Best For | Pros | Cons |

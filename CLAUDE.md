@@ -48,6 +48,10 @@ The application supports flexible session identification:
 
 For complete local debugging architecture details, see [ADR-002: Local Debugging Environment](docs/adr/ADR-002-local-debugging-environment.md).
 
+### Branch Strategy
+- **main**: Production branch - stable, deployed code
+- **dev**: Development branch - active development and feature integration
+
 ### Local Debugging (Enhanced in v2.2)
 ```bash
 # Install dependencies for local debugging

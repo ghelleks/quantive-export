@@ -289,6 +289,12 @@ Both environments use identical configuration keys - just different storage mech
 
 ## Deployment Integration
 
+### Branch Strategy
+- **main**: Production branch - stable, deployed code ready for production
+- **dev**: Development branch - active development and feature integration
+
+### Deployment Process
+
 For production deployment after local development:
 
 1. **Manual Deployment**: Copy Code.gs to Google Apps Script editor
